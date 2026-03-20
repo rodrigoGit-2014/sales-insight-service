@@ -85,21 +85,41 @@ class TicketRepository(BaseRepository[Ticket]):
             for row in results
         ]
 
-    def get_department_analytics(self) -> List[Dict[str, Any]]:
+    def get_department_analytics(
+        self,
+        fecha_inicio: Optional[date] = None,
+        fecha_fin: Optional[date] = None
+    ) -> List[Dict[str, Any]]:
         """
         Get sales analytics by department.
+
+        Args:
+            fecha_inicio: Start date (inclusive)
+            fecha_fin: End date (inclusive)
 
         Returns:
             List of dictionaries with department data
         """
         # Get total sales for percentage calculation
-        total_sales = self.db.query(func.sum(Ticket.precio_total)).scalar() or Decimal('0')
+        total_query = self.db.query(func.sum(Ticket.precio_total))
+        if fecha_inicio:
+            total_query = total_query.filter(Ticket.fecha >= fecha_inicio)
+        if fecha_fin:
+            total_query = total_query.filter(Ticket.fecha <= fecha_fin)
+        total_sales = total_query.scalar() or Decimal('0')
 
-        results = self.db.query(
+        query = self.db.query(
             Ticket.id_departamento,
             func.sum(Ticket.precio_total).label('total_sales'),
             func.count(func.distinct(Ticket.id_pedido)).label('order_count')
-        ).group_by(
+        )
+
+        if fecha_inicio:
+            query = query.filter(Ticket.fecha >= fecha_inicio)
+        if fecha_fin:
+            query = query.filter(Ticket.fecha <= fecha_fin)
+
+        results = query.group_by(
             Ticket.id_departamento
         ).order_by(
             desc('total_sales')
@@ -287,26 +307,53 @@ class TicketRepository(BaseRepository[Ticket]):
             'total_sales': total_sales
         }
 
-    def get_order_count(self) -> int:
+    def get_order_count(
+        self,
+        fecha_inicio: Optional[date] = None,
+        fecha_fin: Optional[date] = None
+    ) -> int:
         """
         Get total number of orders.
+
+        Args:
+            fecha_inicio: Start date (inclusive)
+            fecha_fin: End date (inclusive)
 
         Returns:
             Total order count
         """
-        return self.db.query(func.count(func.distinct(Ticket.id_pedido))).scalar() or 0
+        query = self.db.query(func.count(func.distinct(Ticket.id_pedido)))
+        if fecha_inicio:
+            query = query.filter(Ticket.fecha >= fecha_inicio)
+        if fecha_fin:
+            query = query.filter(Ticket.fecha <= fecha_fin)
+        return query.scalar() or 0
 
-    def get_average_order_value(self) -> Decimal:
+    def get_average_order_value(
+        self,
+        fecha_inicio: Optional[date] = None,
+        fecha_fin: Optional[date] = None
+    ) -> Decimal:
         """
         Calculate average order value.
+
+        Args:
+            fecha_inicio: Start date (inclusive)
+            fecha_fin: End date (inclusive)
 
         Returns:
             Average order value
         """
-        result = self.db.query(
+        query = self.db.query(
             func.sum(Ticket.precio_total).label('total_sales'),
             func.count(func.distinct(Ticket.id_pedido)).label('total_orders')
-        ).first()
+        )
+        if fecha_inicio:
+            query = query.filter(Ticket.fecha >= fecha_inicio)
+        if fecha_fin:
+            query = query.filter(Ticket.fecha <= fecha_fin)
+
+        result = query.first()
 
         total_sales = result.total_sales or Decimal('0')
         total_orders = result.total_orders or 0

@@ -209,7 +209,7 @@ def _parse_date(date_str: str) -> date:
     if isinstance(date_str, date):
         return date_str
     # Try common date formats
-    for fmt in ['%Y-%m-%d', '%d/%m/%Y', '%m/%d/%Y']:
+    for fmt in ['%Y-%m-%d', '%Y-%m-%d %H:%M:%S', '%d/%m/%Y', '%d/%m/%Y %H:%M:%S', '%m/%d/%Y']:
         try:
             return datetime.strptime(date_str, fmt).date()
         except ValueError:

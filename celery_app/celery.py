@@ -31,7 +31,7 @@ celery_app.conf.update(
 
     # Task routes
     task_routes={
-        'celery_app.tasks.process_transactions.process_transactions_task': {
+        'process_transactions': {
             'queue': 'default',
             'routing_key': 'default',
         }
@@ -44,7 +44,7 @@ celery_app.conf.update(
 
     # Retry configuration
     task_annotations={
-        'celery_app.tasks.process_transactions.process_transactions_task': {
+        'process_transactions': {
             'rate_limit': '10/m',  # Max 10 tasks per minute
         }
     }

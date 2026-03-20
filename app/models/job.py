@@ -39,7 +39,7 @@ class Job(Base):
 
     # Job Status
     status = Column(
-        SQLAlchemyEnum(JobStatus, name="job_status"),
+        SQLAlchemyEnum(JobStatus, name="job_status", values_callable=lambda x: [e.value for e in x]),
         nullable=False,
         default=JobStatus.PENDING,
         index=True,

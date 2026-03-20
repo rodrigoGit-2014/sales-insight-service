@@ -1,5 +1,7 @@
 """Analytics endpoints"""
 
+from datetime import date
+from typing import Optional
 from fastapi import APIRouter, Depends, Query, HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -24,10 +26,14 @@ router = APIRouter()
     description="Get sales analytics grouped by department"
 )
 def get_department_analytics(
+    fecha_inicio: Optional[date] = Query(None, description="Start date (YYYY-MM-DD)"),
+    fecha_fin: Optional[date] = Query(None, description="End date (YYYY-MM-DD)"),
     db: Session = Depends(get_db)
 ):
     """
     Get sales analytics by department.
+
+    Optionally filter by date range using fecha_inicio and fecha_fin.
 
     Returns for each department:
     - Total sales
@@ -36,10 +42,16 @@ def get_department_analytics(
 
     Results are ordered by total sales (highest first).
     """
+    if fecha_inicio and fecha_fin and fecha_inicio > fecha_fin:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="fecha_inicio must be before or equal to fecha_fin"
+        )
+
     analytics_service = AnalyticsService(db)
 
     try:
-        result = analytics_service.get_department_analytics()
+        result = analytics_service.get_department_analytics(fecha_inicio, fecha_fin)
         return DepartmentAnalyticsResponse(data=result)
     except Exception as e:
         raise HTTPException(
@@ -219,20 +231,30 @@ def get_customer_average_spend(
     description="Get total number of orders"
 )
 def get_order_count(
+    fecha_inicio: Optional[date] = Query(None, description="Start date (YYYY-MM-DD)"),
+    fecha_fin: Optional[date] = Query(None, description="End date (YYYY-MM-DD)"),
     db: Session = Depends(get_db)
 ):
     """
     Get order statistics.
+
+    Optionally filter by date range using fecha_inicio and fecha_fin.
 
     Returns:
     - Total number of orders
     - Average order value
     - Total sales amount
     """
+    if fecha_inicio and fecha_fin and fecha_inicio > fecha_fin:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="fecha_inicio must be before or equal to fecha_fin"
+        )
+
     analytics_service = AnalyticsService(db)
 
     try:
-        result = analytics_service.get_order_statistics()
+        result = analytics_service.get_order_statistics(fecha_inicio, fecha_fin)
         return OrderStatsResponse(**result)
     except Exception as e:
         raise HTTPException(

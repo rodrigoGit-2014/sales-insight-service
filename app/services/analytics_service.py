@@ -1,6 +1,7 @@
 """Service for analytics calculations"""
 
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
+from datetime import date
 from decimal import Decimal
 from sqlalchemy.orm import Session
 
@@ -14,14 +15,22 @@ class AnalyticsService:
         self.db = db
         self.ticket_repository = TicketRepository(db)
 
-    def get_department_analytics(self) -> List[Dict[str, Any]]:
+    def get_department_analytics(
+        self,
+        fecha_inicio: Optional[date] = None,
+        fecha_fin: Optional[date] = None
+    ) -> List[Dict[str, Any]]:
         """
         Get analytics grouped by department.
+
+        Args:
+            fecha_inicio: Start date (inclusive)
+            fecha_fin: End date (inclusive)
 
         Returns:
             List of department analytics data
         """
-        return self.ticket_repository.get_department_analytics()
+        return self.ticket_repository.get_department_analytics(fecha_inicio, fecha_fin)
 
     def get_section_analytics(self) -> List[Dict[str, Any]]:
         """
@@ -89,15 +98,23 @@ class AnalyticsService:
         """
         return self.ticket_repository.get_customer_average_spend()
 
-    def get_order_statistics(self) -> Dict[str, Any]:
+    def get_order_statistics(
+        self,
+        fecha_inicio: Optional[date] = None,
+        fecha_fin: Optional[date] = None
+    ) -> Dict[str, Any]:
         """
         Get overall order statistics.
+
+        Args:
+            fecha_inicio: Start date (inclusive)
+            fecha_fin: End date (inclusive)
 
         Returns:
             Dictionary with order count, average value, and total sales
         """
-        order_count = self.ticket_repository.get_order_count()
-        avg_order_value = self.ticket_repository.get_average_order_value()
+        order_count = self.ticket_repository.get_order_count(fecha_inicio, fecha_fin)
+        avg_order_value = self.ticket_repository.get_average_order_value(fecha_inicio, fecha_fin)
         total_sales = order_count * avg_order_value if order_count > 0 else Decimal('0')
 
         return {
