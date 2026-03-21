@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import upload, jobs, sales, analytics
+from app.api.v1.endpoints import upload, jobs, sales, analytics, config
 
 # Create main API v1 router
 api_router = APIRouter()
@@ -26,4 +26,9 @@ api_router.include_router(
 api_router.include_router(
     analytics.router,
     tags=["Analytics"]
+)
+
+api_router.include_router(
+    config.router,
+    tags=["Configuration"]
 )
