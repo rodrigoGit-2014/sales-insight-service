@@ -13,6 +13,7 @@ class SalesTotalResponse(BaseModel):
     fecha_fin: date = Field(..., description="End date")
     total_sales: Decimal = Field(..., description="Total sales amount")
     total_orders: int = Field(..., description="Total number of orders")
+    total_clients: int = Field(..., description="Total number of distinct clients")
     average_order_value: Decimal = Field(..., description="Average order value")
 
 

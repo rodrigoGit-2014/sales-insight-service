@@ -3,7 +3,7 @@
 from typing import List, Optional, Dict, Any
 from datetime import date
 from decimal import Decimal
-from sqlalchemy import func, desc, and_
+from sqlalchemy import func, desc, and_, text
 from sqlalchemy.orm import Session
 
 from app.models.ticket import Ticket
@@ -29,51 +29,60 @@ class TicketRepository(BaseRepository[Ticket]):
             fecha_fin: End date (inclusive)
 
         Returns:
-            Dictionary with total_sales, total_orders, average_order_value
+            Dictionary with total_sales, total_orders, total_clients, average_order_value
         """
-        query = self.db.query(
-            func.sum(Ticket.precio_total).label('total_sales'),
-            func.count(func.distinct(Ticket.id_pedido)).label('total_orders')
-        )
+        params = {}
+        where_clauses = []
 
         if fecha_inicio:
-            query = query.filter(Ticket.fecha >= fecha_inicio)
+            params['fecha_inicio'] = fecha_inicio
+            where_clauses.append("fecha >= :fecha_inicio")
         if fecha_fin:
-            query = query.filter(Ticket.fecha <= fecha_fin)
+            params['fecha_fin'] = fecha_fin
+            where_clauses.append("fecha <= :fecha_fin")
 
-        result = query.first()
+        where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
 
-        total_sales = result.total_sales or Decimal('0')
-        total_orders = result.total_orders or 0
-        avg_order_value = (total_sales / total_orders) if total_orders > 0 else Decimal('0')
+        result = self.db.execute(
+            text(f"""
+                SELECT
+                    COALESCE(SUM(precio_total), 0) AS total_sales,
+                    COUNT(DISTINCT id_pedido) AS total_orders,
+                    COUNT(DISTINCT id_cliente) AS total_clients,
+                    COALESCE(AVG(precio_total), 0) AS average_order_value
+                FROM tickets
+                {where_sql}
+            """),
+            params
+        ).first()
 
         return {
-            'total_sales': total_sales,
-            'total_orders': total_orders,
-            'average_order_value': avg_order_value
+            'total_sales': Decimal(str(result.total_sales)),
+            'total_orders': int(result.total_orders),
+            'total_clients': int(result.total_clients),
+            'average_order_value': Decimal(str(result.average_order_value))
         }
 
     def get_monthly_trend(self) -> List[Dict[str, Any]]:
         """
         Get monthly sales trend.
+        Uses mv_monthly_trend materialized view for performance.
 
         Returns:
             List of dictionaries with year, month, total_sales, order_count, avg_order_value
         """
-        results = self.db.query(
-            func.extract('year', Ticket.fecha).label('year'),
-            func.extract('month', Ticket.fecha).label('month'),
-            func.sum(Ticket.precio_total).label('total_sales'),
-            func.count(func.distinct(Ticket.id_pedido)).label('order_count')
-        ).group_by(
-            func.extract('year', Ticket.fecha),
-            func.extract('month', Ticket.fecha)
-        ).order_by('year', 'month').all()
+        results = self.db.execute(
+            text("""
+                SELECT year, month, total_sales, order_count
+                FROM mv_monthly_trend
+                ORDER BY year, month
+            """)
+        ).fetchall()
 
         return [
             {
-                'year': int(row.year),
-                'month': int(row.month),
+                'year': row.year,
+                'month': row.month,
                 'total_sales': row.total_sales or Decimal('0'),
                 'order_count': row.order_count or 0,
                 'avg_order_value': (
@@ -92,6 +101,7 @@ class TicketRepository(BaseRepository[Ticket]):
     ) -> List[Dict[str, Any]]:
         """
         Get sales analytics by department.
+        Uses mv_department_analytics materialized view for performance.
 
         Args:
             fecha_inicio: Start date (inclusive)
@@ -100,41 +110,47 @@ class TicketRepository(BaseRepository[Ticket]):
         Returns:
             List of dictionaries with department data
         """
-        # Get total sales for percentage calculation
-        total_query = self.db.query(func.sum(Ticket.precio_total))
-        if fecha_inicio:
-            total_query = total_query.filter(Ticket.fecha >= fecha_inicio)
-        if fecha_fin:
-            total_query = total_query.filter(Ticket.fecha <= fecha_fin)
-        total_sales = total_query.scalar() or Decimal('0')
-
-        query = self.db.query(
-            Ticket.id_departamento,
-            func.sum(Ticket.precio_total).label('total_sales'),
-            func.count(func.distinct(Ticket.id_pedido)).label('order_count')
-        )
+        params = {}
+        where_clauses = []
 
         if fecha_inicio:
-            query = query.filter(Ticket.fecha >= fecha_inicio)
+            params['fecha_inicio'] = fecha_inicio
+            where_clauses.append("fecha >= :fecha_inicio")
         if fecha_fin:
-            query = query.filter(Ticket.fecha <= fecha_fin)
+            params['fecha_fin'] = fecha_fin
+            where_clauses.append("fecha <= :fecha_fin")
 
-        results = query.group_by(
-            Ticket.id_departamento
-        ).order_by(
-            desc('total_sales')
-        ).all()
+        where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
+
+        results = self.db.execute(
+            text(f"""
+                WITH dept_data AS (
+                    SELECT id_departamento,
+                           SUM(total_sales) AS total_sales,
+                           SUM(order_count) AS order_count
+                    FROM mv_department_analytics
+                    {where_sql}
+                    GROUP BY id_departamento
+                ),
+                grand_total AS (
+                    SELECT COALESCE(SUM(total_sales), 0) AS grand_total FROM dept_data
+                )
+                SELECT d.id_departamento, d.total_sales, d.order_count,
+                       CASE WHEN g.grand_total > 0
+                            THEN ROUND((d.total_sales / g.grand_total) * 100, 2)
+                            ELSE 0 END AS percentage_of_total
+                FROM dept_data d, grand_total g
+                ORDER BY d.total_sales DESC
+            """),
+            params
+        ).fetchall()
 
         return [
             {
                 'id_departamento': row.id_departamento,
                 'total_sales': row.total_sales or Decimal('0'),
                 'order_count': row.order_count or 0,
-                'percentage_of_total': (
-                    round((row.total_sales / total_sales) * 100, 2)
-                    if total_sales > 0
-                    else Decimal('0')
-                )
+                'percentage_of_total': row.percentage_of_total or Decimal('0')
             }
             for row in results
         ]
@@ -142,23 +158,25 @@ class TicketRepository(BaseRepository[Ticket]):
     def get_section_analytics(self) -> List[Dict[str, Any]]:
         """
         Get sales analytics by section.
+        Uses mv_section_analytics materialized view for performance.
 
         Returns:
             List of dictionaries with section data
         """
-        total_sales = self.db.query(func.sum(Ticket.precio_total)).scalar() or Decimal('0')
-
-        results = self.db.query(
-            Ticket.id_seccion,
-            Ticket.id_departamento,
-            func.sum(Ticket.precio_total).label('total_sales'),
-            func.count(func.distinct(Ticket.id_pedido)).label('order_count')
-        ).group_by(
-            Ticket.id_seccion,
-            Ticket.id_departamento
-        ).order_by(
-            desc('total_sales')
-        ).all()
+        results = self.db.execute(
+            text("""
+                WITH grand_total AS (
+                    SELECT COALESCE(SUM(total_sales), 0) AS grand_total
+                    FROM mv_section_analytics
+                )
+                SELECT s.id_seccion, s.id_departamento, s.total_sales, s.order_count,
+                       CASE WHEN g.grand_total > 0
+                            THEN ROUND((s.total_sales / g.grand_total) * 100, 2)
+                            ELSE 0 END AS percentage_of_total
+                FROM mv_section_analytics s, grand_total g
+                ORDER BY s.total_sales DESC
+            """)
+        ).fetchall()
 
         return [
             {
@@ -166,11 +184,7 @@ class TicketRepository(BaseRepository[Ticket]):
                 'id_departamento': row.id_departamento,
                 'total_sales': row.total_sales or Decimal('0'),
                 'order_count': row.order_count or 0,
-                'percentage_of_total': (
-                    round((row.total_sales / total_sales) * 100, 2)
-                    if total_sales > 0
-                    else Decimal('0')
-                )
+                'percentage_of_total': row.percentage_of_total or Decimal('0')
             }
             for row in results
         ]
@@ -178,6 +192,7 @@ class TicketRepository(BaseRepository[Ticket]):
     def get_top_products_by_quantity(self, limit: int = 10) -> List[Dict[str, Any]]:
         """
         Get top products by quantity sold.
+        Uses mv_product_analytics materialized view for performance.
 
         Args:
             limit: Number of top products to return
@@ -185,19 +200,16 @@ class TicketRepository(BaseRepository[Ticket]):
         Returns:
             List of dictionaries with product data
         """
-        results = self.db.query(
-            Ticket.id_producto,
-            Ticket.nombre_producto,
-            func.sum(Ticket.cantidad).label('total_quantity'),
-            func.sum(Ticket.precio_total).label('total_revenue'),
-            func.count(func.distinct(Ticket.id_pedido)).label('order_count'),
-            func.avg(Ticket.precio_unitario).label('avg_unit_price')
-        ).group_by(
-            Ticket.id_producto,
-            Ticket.nombre_producto
-        ).order_by(
-            desc('total_quantity')
-        ).limit(limit).all()
+        results = self.db.execute(
+            text("""
+                SELECT id_producto, nombre_producto, total_quantity,
+                       total_revenue, order_count, avg_unit_price
+                FROM mv_product_analytics
+                ORDER BY total_quantity DESC
+                LIMIT :limit
+            """),
+            {"limit": limit}
+        ).fetchall()
 
         return [
             {
@@ -214,6 +226,7 @@ class TicketRepository(BaseRepository[Ticket]):
     def get_top_products_by_revenue(self, limit: int = 10) -> List[Dict[str, Any]]:
         """
         Get top products by revenue.
+        Uses mv_product_analytics materialized view for performance.
 
         Args:
             limit: Number of top products to return
@@ -221,19 +234,16 @@ class TicketRepository(BaseRepository[Ticket]):
         Returns:
             List of dictionaries with product data
         """
-        results = self.db.query(
-            Ticket.id_producto,
-            Ticket.nombre_producto,
-            func.sum(Ticket.cantidad).label('total_quantity'),
-            func.sum(Ticket.precio_total).label('total_revenue'),
-            func.count(func.distinct(Ticket.id_pedido)).label('order_count'),
-            func.avg(Ticket.precio_unitario).label('avg_unit_price')
-        ).group_by(
-            Ticket.id_producto,
-            Ticket.nombre_producto
-        ).order_by(
-            desc('total_revenue')
-        ).limit(limit).all()
+        results = self.db.execute(
+            text("""
+                SELECT id_producto, nombre_producto, total_quantity,
+                       total_revenue, order_count, avg_unit_price
+                FROM mv_product_analytics
+                ORDER BY total_revenue DESC
+                LIMIT :limit
+            """),
+            {"limit": limit}
+        ).fetchall()
 
         return [
             {
@@ -250,6 +260,7 @@ class TicketRepository(BaseRepository[Ticket]):
     def get_top_customers(self, limit: int = 20) -> List[Dict[str, Any]]:
         """
         Get top customers by total spend.
+        Uses mv_customer_top materialized view for performance.
 
         Args:
             limit: Number of top customers to return
@@ -257,17 +268,16 @@ class TicketRepository(BaseRepository[Ticket]):
         Returns:
             List of dictionaries with customer data
         """
-        results = self.db.query(
-            Ticket.id_cliente,
-            func.sum(Ticket.precio_total).label('total_spent'),
-            func.count(func.distinct(Ticket.id_pedido)).label('order_count'),
-            func.min(Ticket.fecha).label('first_purchase'),
-            func.max(Ticket.fecha).label('last_purchase')
-        ).group_by(
-            Ticket.id_cliente
-        ).order_by(
-            desc('total_spent')
-        ).limit(limit).all()
+        results = self.db.execute(
+            text("""
+                SELECT id_cliente, total_spent, order_count,
+                       first_purchase, last_purchase
+                FROM mv_customer_top
+                ORDER BY total_spent DESC
+                LIMIT :limit
+            """),
+            {"limit": limit}
+        ).fetchall()
 
         return [
             {
@@ -288,17 +298,17 @@ class TicketRepository(BaseRepository[Ticket]):
     def get_customer_average_spend(self) -> Dict[str, Any]:
         """
         Calculate average spend per customer.
+        Uses mv_customer_summary materialized view for performance.
 
         Returns:
             Dictionary with average_spend_per_customer, total_customers, total_sales
         """
-        result = self.db.query(
-            func.count(func.distinct(Ticket.id_cliente)).label('total_customers'),
-            func.sum(Ticket.precio_total).label('total_sales')
+        result = self.db.execute(
+            text("SELECT total_customers, total_sales FROM mv_customer_summary")
         ).first()
 
         total_customers = result.total_customers or 0
-        total_sales = result.total_sales or Decimal('0')
+        total_sales = Decimal(str(result.total_sales)) if result.total_sales else Decimal('0')
         avg_spend = (total_sales / total_customers) if total_customers > 0 else Decimal('0')
 
         return {
@@ -307,6 +317,21 @@ class TicketRepository(BaseRepository[Ticket]):
             'total_sales': total_sales
         }
 
+    def _monthly_trend_filter(self, fecha_inicio=None, fecha_fin=None):
+        """Build WHERE clause for mv_monthly_trend based on date range."""
+        params = {}
+        where_clauses = []
+        if fecha_inicio:
+            params['start_year'] = fecha_inicio.year
+            params['start_month'] = fecha_inicio.month
+            where_clauses.append("(year > :start_year OR (year = :start_year AND month >= :start_month))")
+        if fecha_fin:
+            params['end_year'] = fecha_fin.year
+            params['end_month'] = fecha_fin.month
+            where_clauses.append("(year < :end_year OR (year = :end_year AND month <= :end_month))")
+        where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
+        return where_sql, params
+
     def get_order_count(
         self,
         fecha_inicio: Optional[date] = None,
@@ -314,6 +339,7 @@ class TicketRepository(BaseRepository[Ticket]):
     ) -> int:
         """
         Get total number of orders.
+        Uses mv_monthly_trend materialized view for performance.
 
         Args:
             fecha_inicio: Start date (inclusive)
@@ -322,12 +348,12 @@ class TicketRepository(BaseRepository[Ticket]):
         Returns:
             Total order count
         """
-        query = self.db.query(func.count(func.distinct(Ticket.id_pedido)))
-        if fecha_inicio:
-            query = query.filter(Ticket.fecha >= fecha_inicio)
-        if fecha_fin:
-            query = query.filter(Ticket.fecha <= fecha_fin)
-        return query.scalar() or 0
+        where_sql, params = self._monthly_trend_filter(fecha_inicio, fecha_fin)
+        result = self.db.execute(
+            text(f"SELECT COALESCE(SUM(order_count), 0) AS total FROM mv_monthly_trend {where_sql}"),
+            params
+        ).first()
+        return int(result.total)
 
     def get_average_order_value(
         self,
@@ -336,6 +362,7 @@ class TicketRepository(BaseRepository[Ticket]):
     ) -> Decimal:
         """
         Calculate average order value.
+        Uses mv_monthly_trend materialized view for performance.
 
         Args:
             fecha_inicio: Start date (inclusive)
@@ -344,18 +371,17 @@ class TicketRepository(BaseRepository[Ticket]):
         Returns:
             Average order value
         """
-        query = self.db.query(
-            func.sum(Ticket.precio_total).label('total_sales'),
-            func.count(func.distinct(Ticket.id_pedido)).label('total_orders')
-        )
-        if fecha_inicio:
-            query = query.filter(Ticket.fecha >= fecha_inicio)
-        if fecha_fin:
-            query = query.filter(Ticket.fecha <= fecha_fin)
+        where_sql, params = self._monthly_trend_filter(fecha_inicio, fecha_fin)
+        result = self.db.execute(
+            text(f"""
+                SELECT COALESCE(SUM(total_sales), 0) AS total_sales,
+                       COALESCE(SUM(order_count), 0) AS total_orders
+                FROM mv_monthly_trend {where_sql}
+            """),
+            params
+        ).first()
 
-        result = query.first()
-
-        total_sales = result.total_sales or Decimal('0')
-        total_orders = result.total_orders or 0
+        total_sales = Decimal(str(result.total_sales))
+        total_orders = int(result.total_orders)
 
         return (total_sales / total_orders) if total_orders > 0 else Decimal('0')
