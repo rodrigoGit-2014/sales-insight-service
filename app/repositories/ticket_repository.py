@@ -347,26 +347,50 @@ class TicketRepository(BaseRepository[Ticket]):
             for row in results
         ]
 
-    def get_top_customers(self, limit: int = 20) -> List[Dict[str, Any]]:
+    def get_top_customers(
+        self,
+        limit: int = 20,
+        fecha_inicio: Optional[date] = None,
+        fecha_fin: Optional[date] = None
+    ) -> List[Dict[str, Any]]:
         """
         Get top customers by total spend.
         Uses mv_customer_top materialized view for performance.
 
         Args:
             limit: Number of top customers to return
+            fecha_inicio: Start date (inclusive)
+            fecha_fin: End date (inclusive)
 
         Returns:
             List of dictionaries with customer data
         """
+        params = {"limit": limit}
+        where_clauses = []
+
+        if fecha_inicio:
+            params['fecha_inicio'] = fecha_inicio
+            where_clauses.append("fecha >= :fecha_inicio")
+        if fecha_fin:
+            params['fecha_fin'] = fecha_fin
+            where_clauses.append("fecha <= :fecha_fin")
+
+        where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
+
         results = self.db.execute(
-            text("""
-                SELECT id_cliente, total_spent, order_count,
-                       first_purchase, last_purchase
+            text(f"""
+                SELECT id_cliente,
+                       SUM(total_spent) AS total_spent,
+                       SUM(order_count) AS order_count,
+                       MIN(fecha) AS first_purchase,
+                       MAX(fecha) AS last_purchase
                 FROM mv_customer_top
+                {where_sql}
+                GROUP BY id_cliente
                 ORDER BY total_spent DESC
                 LIMIT :limit
             """),
-            {"limit": limit}
+            params
         ).fetchall()
 
         return [
@@ -385,20 +409,46 @@ class TicketRepository(BaseRepository[Ticket]):
             for row in results
         ]
 
-    def get_customer_average_spend(self) -> Dict[str, Any]:
+    def get_customer_average_spend(
+        self,
+        fecha_inicio: Optional[date] = None,
+        fecha_fin: Optional[date] = None
+    ) -> Dict[str, Any]:
         """
         Calculate average spend per customer.
-        Uses mv_customer_summary materialized view for performance.
+        Uses mv_daily_sales materialized view for performance.
+
+        Args:
+            fecha_inicio: Start date (inclusive)
+            fecha_fin: End date (inclusive)
 
         Returns:
             Dictionary with average_spend_per_customer, total_customers, total_sales
         """
+        params = {}
+        where_clauses = []
+
+        if fecha_inicio:
+            params['fecha_inicio'] = fecha_inicio
+            where_clauses.append("fecha >= :fecha_inicio")
+        if fecha_fin:
+            params['fecha_fin'] = fecha_fin
+            where_clauses.append("fecha <= :fecha_fin")
+
+        where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
+
         result = self.db.execute(
-            text("SELECT total_customers, total_sales FROM mv_customer_summary")
+            text(f"""
+                SELECT COALESCE(SUM(client_count), 0) AS total_customers,
+                       COALESCE(SUM(total_sales), 0) AS total_sales
+                FROM mv_daily_sales
+                {where_sql}
+            """),
+            params
         ).first()
 
-        total_customers = result.total_customers or 0
-        total_sales = Decimal(str(result.total_sales)) if result.total_sales else Decimal('0')
+        total_customers = int(result.total_customers)
+        total_sales = Decimal(str(result.total_sales))
         avg_spend = (total_sales / total_customers) if total_customers > 0 else Decimal('0')
 
         return {

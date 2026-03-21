@@ -95,30 +95,45 @@ class AnalyticsService:
             'limit': limit
         }
 
-    def get_top_customers(self, limit: int = 20) -> Dict[str, Any]:
+    def get_top_customers(
+        self,
+        limit: int = 20,
+        fecha_inicio: Optional[date] = None,
+        fecha_fin: Optional[date] = None
+    ) -> Dict[str, Any]:
         """
         Get top customers by total spend.
 
         Args:
             limit: Number of top customers to return
+            fecha_inicio: Start date (inclusive)
+            fecha_fin: End date (inclusive)
 
         Returns:
             Dictionary with customer data and limit
         """
-        customers = self.ticket_repository.get_top_customers(limit)
+        customers = self.ticket_repository.get_top_customers(limit, fecha_inicio, fecha_fin)
         return {
             'data': customers,
             'limit': limit
         }
 
-    def get_customer_average_spend(self) -> Dict[str, Any]:
+    def get_customer_average_spend(
+        self,
+        fecha_inicio: Optional[date] = None,
+        fecha_fin: Optional[date] = None
+    ) -> Dict[str, Any]:
         """
         Get average spend per customer.
+
+        Args:
+            fecha_inicio: Start date (inclusive)
+            fecha_fin: End date (inclusive)
 
         Returns:
             Dictionary with average spend statistics
         """
-        return self.ticket_repository.get_customer_average_spend()
+        return self.ticket_repository.get_customer_average_spend(fecha_inicio, fecha_fin)
 
     def get_order_statistics(
         self,

@@ -199,10 +199,14 @@ def get_top_products_by_revenue(
 )
 def get_top_customers(
     limit: int = Query(20, ge=1, le=100, description="Number of customers to return"),
+    fecha_inicio: Optional[date] = Query(None, description="Start date (YYYY-MM-DD)"),
+    fecha_fin: Optional[date] = Query(None, description="End date (YYYY-MM-DD)"),
     db: Session = Depends(get_db)
 ):
     """
     Get top customers by total spend.
+
+    Optionally filter by date range using fecha_inicio and fecha_fin.
 
     Returns for each customer:
     - Customer ID
@@ -213,10 +217,16 @@ def get_top_customers(
 
     Results are ordered by total spend (highest first).
     """
+    if fecha_inicio and fecha_fin and fecha_inicio > fecha_fin:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="fecha_inicio must be before or equal to fecha_fin"
+        )
+
     analytics_service = AnalyticsService(db)
 
     try:
-        result = analytics_service.get_top_customers(limit)
+        result = analytics_service.get_top_customers(limit, fecha_inicio, fecha_fin)
         return CustomerAnalyticsResponse(**result)
     except Exception as e:
         raise HTTPException(
@@ -232,20 +242,30 @@ def get_top_customers(
     description="Calculate average spend per customer"
 )
 def get_customer_average_spend(
+    fecha_inicio: Optional[date] = Query(None, description="Start date (YYYY-MM-DD)"),
+    fecha_fin: Optional[date] = Query(None, description="End date (YYYY-MM-DD)"),
     db: Session = Depends(get_db)
 ):
     """
     Get average spend per customer.
+
+    Optionally filter by date range using fecha_inicio and fecha_fin.
 
     Returns:
     - Average spend per customer
     - Total number of customers
     - Total sales amount
     """
+    if fecha_inicio and fecha_fin and fecha_inicio > fecha_fin:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="fecha_inicio must be before or equal to fecha_fin"
+        )
+
     analytics_service = AnalyticsService(db)
 
     try:
-        result = analytics_service.get_customer_average_spend()
+        result = analytics_service.get_customer_average_spend(fecha_inicio, fecha_fin)
         return AverageSpendResponse(**result)
     except Exception as e:
         raise HTTPException(
