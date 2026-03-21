@@ -32,42 +32,64 @@ class AnalyticsService:
         """
         return self.ticket_repository.get_department_analytics(fecha_inicio, fecha_fin)
 
-    def get_section_analytics(self) -> List[Dict[str, Any]]:
+    def get_section_analytics(
+        self,
+        fecha_inicio: Optional[date] = None,
+        fecha_fin: Optional[date] = None
+    ) -> List[Dict[str, Any]]:
         """
         Get analytics grouped by section.
+
+        Args:
+            fecha_inicio: Start date (inclusive)
+            fecha_fin: End date (inclusive)
 
         Returns:
             List of section analytics data
         """
-        return self.ticket_repository.get_section_analytics()
+        return self.ticket_repository.get_section_analytics(fecha_inicio, fecha_fin)
 
-    def get_top_products_by_quantity(self, limit: int = 10) -> Dict[str, Any]:
+    def get_top_products_by_quantity(
+        self,
+        limit: int = 10,
+        fecha_inicio: Optional[date] = None,
+        fecha_fin: Optional[date] = None
+    ) -> Dict[str, Any]:
         """
         Get top products by quantity sold.
 
         Args:
             limit: Number of top products to return
+            fecha_inicio: Start date (inclusive)
+            fecha_fin: End date (inclusive)
 
         Returns:
             Dictionary with product data and limit
         """
-        products = self.ticket_repository.get_top_products_by_quantity(limit)
+        products = self.ticket_repository.get_top_products_by_quantity(limit, fecha_inicio, fecha_fin)
         return {
             'data': products,
             'limit': limit
         }
 
-    def get_top_products_by_revenue(self, limit: int = 10) -> Dict[str, Any]:
+    def get_top_products_by_revenue(
+        self,
+        limit: int = 10,
+        fecha_inicio: Optional[date] = None,
+        fecha_fin: Optional[date] = None
+    ) -> Dict[str, Any]:
         """
         Get top products by revenue.
 
         Args:
             limit: Number of top products to return
+            fecha_inicio: Start date (inclusive)
+            fecha_fin: End date (inclusive)
 
         Returns:
             Dictionary with product data and limit
         """
-        products = self.ticket_repository.get_top_products_by_revenue(limit)
+        products = self.ticket_repository.get_top_products_by_revenue(limit, fecha_inicio, fecha_fin)
         return {
             'data': products,
             'limit': limit

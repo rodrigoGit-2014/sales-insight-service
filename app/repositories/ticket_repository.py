@@ -46,11 +46,13 @@ class TicketRepository(BaseRepository[Ticket]):
         result = self.db.execute(
             text(f"""
                 SELECT
-                    COALESCE(SUM(precio_total), 0) AS total_sales,
-                    COUNT(DISTINCT id_pedido) AS total_orders,
-                    COUNT(DISTINCT id_cliente) AS total_clients,
-                    COALESCE(AVG(precio_total), 0) AS average_order_value
-                FROM tickets
+                    COALESCE(SUM(total_sales), 0) AS total_sales,
+                    COALESCE(SUM(order_count), 0) AS total_orders,
+                    COALESCE(SUM(client_count), 0) AS total_clients,
+                    CASE WHEN SUM(total_rows) > 0
+                         THEN SUM(total_sales) / SUM(total_rows)
+                         ELSE 0 END AS average_order_value
+                FROM mv_daily_sales
                 {where_sql}
             """),
             params
@@ -63,20 +65,32 @@ class TicketRepository(BaseRepository[Ticket]):
             'average_order_value': Decimal(str(result.average_order_value))
         }
 
-    def get_monthly_trend(self) -> List[Dict[str, Any]]:
+    def get_monthly_trend(
+        self,
+        fecha_inicio: Optional[date] = None,
+        fecha_fin: Optional[date] = None
+    ) -> List[Dict[str, Any]]:
         """
         Get monthly sales trend.
         Uses mv_monthly_trend materialized view for performance.
 
+        Args:
+            fecha_inicio: Start date (inclusive)
+            fecha_fin: End date (inclusive)
+
         Returns:
             List of dictionaries with year, month, total_sales, order_count, avg_order_value
         """
+        where_sql, params = self._monthly_trend_filter(fecha_inicio, fecha_fin)
+
         results = self.db.execute(
-            text("""
+            text(f"""
                 SELECT year, month, total_sales, order_count
                 FROM mv_monthly_trend
+                {where_sql}
                 ORDER BY year, month
-            """)
+            """),
+            params
         ).fetchall()
 
         return [
@@ -155,27 +169,55 @@ class TicketRepository(BaseRepository[Ticket]):
             for row in results
         ]
 
-    def get_section_analytics(self) -> List[Dict[str, Any]]:
+    def get_section_analytics(
+        self,
+        fecha_inicio: Optional[date] = None,
+        fecha_fin: Optional[date] = None
+    ) -> List[Dict[str, Any]]:
         """
         Get sales analytics by section.
         Uses mv_section_analytics materialized view for performance.
 
+        Args:
+            fecha_inicio: Start date (inclusive)
+            fecha_fin: End date (inclusive)
+
         Returns:
             List of dictionaries with section data
         """
+        params = {}
+        where_clauses = []
+
+        if fecha_inicio:
+            params['fecha_inicio'] = fecha_inicio
+            where_clauses.append("fecha >= :fecha_inicio")
+        if fecha_fin:
+            params['fecha_fin'] = fecha_fin
+            where_clauses.append("fecha <= :fecha_fin")
+
+        where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
+
         results = self.db.execute(
-            text("""
-                WITH grand_total AS (
-                    SELECT COALESCE(SUM(total_sales), 0) AS grand_total
+            text(f"""
+                WITH section_data AS (
+                    SELECT id_seccion, id_departamento,
+                           SUM(total_sales) AS total_sales,
+                           SUM(order_count) AS order_count
                     FROM mv_section_analytics
+                    {where_sql}
+                    GROUP BY id_seccion, id_departamento
+                ),
+                grand_total AS (
+                    SELECT COALESCE(SUM(total_sales), 0) AS grand_total FROM section_data
                 )
                 SELECT s.id_seccion, s.id_departamento, s.total_sales, s.order_count,
                        CASE WHEN g.grand_total > 0
                             THEN ROUND((s.total_sales / g.grand_total) * 100, 2)
                             ELSE 0 END AS percentage_of_total
-                FROM mv_section_analytics s, grand_total g
+                FROM section_data s, grand_total g
                 ORDER BY s.total_sales DESC
-            """)
+            """),
+            params
         ).fetchall()
 
         return [
@@ -189,26 +231,50 @@ class TicketRepository(BaseRepository[Ticket]):
             for row in results
         ]
 
-    def get_top_products_by_quantity(self, limit: int = 10) -> List[Dict[str, Any]]:
+    def get_top_products_by_quantity(
+        self,
+        limit: int = 10,
+        fecha_inicio: Optional[date] = None,
+        fecha_fin: Optional[date] = None
+    ) -> List[Dict[str, Any]]:
         """
         Get top products by quantity sold.
         Uses mv_product_analytics materialized view for performance.
 
         Args:
             limit: Number of top products to return
+            fecha_inicio: Start date (inclusive)
+            fecha_fin: End date (inclusive)
 
         Returns:
             List of dictionaries with product data
         """
+        params = {"limit": limit}
+        where_clauses = []
+
+        if fecha_inicio:
+            params['fecha_inicio'] = fecha_inicio
+            where_clauses.append("fecha >= :fecha_inicio")
+        if fecha_fin:
+            params['fecha_fin'] = fecha_fin
+            where_clauses.append("fecha <= :fecha_fin")
+
+        where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
+
         results = self.db.execute(
-            text("""
-                SELECT id_producto, nombre_producto, total_quantity,
-                       total_revenue, order_count, avg_unit_price
+            text(f"""
+                SELECT id_producto, nombre_producto,
+                       SUM(total_quantity) AS total_quantity,
+                       SUM(total_revenue) AS total_revenue,
+                       SUM(order_count) AS order_count,
+                       AVG(avg_unit_price) AS avg_unit_price
                 FROM mv_product_analytics
+                {where_sql}
+                GROUP BY id_producto, nombre_producto
                 ORDER BY total_quantity DESC
                 LIMIT :limit
             """),
-            {"limit": limit}
+            params
         ).fetchall()
 
         return [
@@ -223,26 +289,50 @@ class TicketRepository(BaseRepository[Ticket]):
             for row in results
         ]
 
-    def get_top_products_by_revenue(self, limit: int = 10) -> List[Dict[str, Any]]:
+    def get_top_products_by_revenue(
+        self,
+        limit: int = 10,
+        fecha_inicio: Optional[date] = None,
+        fecha_fin: Optional[date] = None
+    ) -> List[Dict[str, Any]]:
         """
         Get top products by revenue.
         Uses mv_product_analytics materialized view for performance.
 
         Args:
             limit: Number of top products to return
+            fecha_inicio: Start date (inclusive)
+            fecha_fin: End date (inclusive)
 
         Returns:
             List of dictionaries with product data
         """
+        params = {"limit": limit}
+        where_clauses = []
+
+        if fecha_inicio:
+            params['fecha_inicio'] = fecha_inicio
+            where_clauses.append("fecha >= :fecha_inicio")
+        if fecha_fin:
+            params['fecha_fin'] = fecha_fin
+            where_clauses.append("fecha <= :fecha_fin")
+
+        where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
+
         results = self.db.execute(
-            text("""
-                SELECT id_producto, nombre_producto, total_quantity,
-                       total_revenue, order_count, avg_unit_price
+            text(f"""
+                SELECT id_producto, nombre_producto,
+                       SUM(total_quantity) AS total_quantity,
+                       SUM(total_revenue) AS total_revenue,
+                       SUM(order_count) AS order_count,
+                       AVG(avg_unit_price) AS avg_unit_price
                 FROM mv_product_analytics
+                {where_sql}
+                GROUP BY id_producto, nombre_producto
                 ORDER BY total_revenue DESC
                 LIMIT :limit
             """),
-            {"limit": limit}
+            params
         ).fetchall()
 
         return [

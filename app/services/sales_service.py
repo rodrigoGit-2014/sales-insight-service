@@ -37,14 +37,22 @@ class SalesService:
 
         return result
 
-    def get_monthly_trend(self) -> List[Dict[str, Any]]:
+    def get_monthly_trend(
+        self,
+        fecha_inicio: Optional[date] = None,
+        fecha_fin: Optional[date] = None
+    ) -> List[Dict[str, Any]]:
         """
         Get monthly sales trend.
+
+        Args:
+            fecha_inicio: Start date (inclusive)
+            fecha_fin: End date (inclusive)
 
         Returns:
             List of monthly sales data
         """
-        return self.ticket_repository.get_monthly_trend()
+        return self.ticket_repository.get_monthly_trend(fecha_inicio, fecha_fin)
 
     def get_sales_by_date_range(
         self,

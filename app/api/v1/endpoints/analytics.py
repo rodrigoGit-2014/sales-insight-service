@@ -67,10 +67,14 @@ def get_department_analytics(
     description="Get sales analytics grouped by section"
 )
 def get_section_analytics(
+    fecha_inicio: Optional[date] = Query(None, description="Start date (YYYY-MM-DD)"),
+    fecha_fin: Optional[date] = Query(None, description="End date (YYYY-MM-DD)"),
     db: Session = Depends(get_db)
 ):
     """
     Get sales analytics by section.
+
+    Optionally filter by date range using fecha_inicio and fecha_fin.
 
     Returns for each section:
     - Section ID
@@ -81,10 +85,16 @@ def get_section_analytics(
 
     Results are ordered by total sales (highest first).
     """
+    if fecha_inicio and fecha_fin and fecha_inicio > fecha_fin:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="fecha_inicio must be before or equal to fecha_fin"
+        )
+
     analytics_service = AnalyticsService(db)
 
     try:
-        result = analytics_service.get_section_analytics()
+        result = analytics_service.get_section_analytics(fecha_inicio, fecha_fin)
         return SectionAnalyticsResponse(data=result)
     except Exception as e:
         raise HTTPException(
@@ -101,10 +111,14 @@ def get_section_analytics(
 )
 def get_top_products_by_quantity(
     limit: int = Query(10, ge=1, le=100, description="Number of products to return"),
+    fecha_inicio: Optional[date] = Query(None, description="Start date (YYYY-MM-DD)"),
+    fecha_fin: Optional[date] = Query(None, description="End date (YYYY-MM-DD)"),
     db: Session = Depends(get_db)
 ):
     """
     Get top products by quantity sold.
+
+    Optionally filter by date range using fecha_inicio and fecha_fin.
 
     Returns for each product:
     - Product ID and name
@@ -115,10 +129,16 @@ def get_top_products_by_quantity(
 
     Results are ordered by quantity (highest first).
     """
+    if fecha_inicio and fecha_fin and fecha_inicio > fecha_fin:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="fecha_inicio must be before or equal to fecha_fin"
+        )
+
     analytics_service = AnalyticsService(db)
 
     try:
-        result = analytics_service.get_top_products_by_quantity(limit)
+        result = analytics_service.get_top_products_by_quantity(limit, fecha_inicio, fecha_fin)
         return ProductAnalyticsResponse(**result)
     except Exception as e:
         raise HTTPException(
@@ -135,10 +155,14 @@ def get_top_products_by_quantity(
 )
 def get_top_products_by_revenue(
     limit: int = Query(10, ge=1, le=100, description="Number of products to return"),
+    fecha_inicio: Optional[date] = Query(None, description="Start date (YYYY-MM-DD)"),
+    fecha_fin: Optional[date] = Query(None, description="End date (YYYY-MM-DD)"),
     db: Session = Depends(get_db)
 ):
     """
     Get top products by revenue.
+
+    Optionally filter by date range using fecha_inicio and fecha_fin.
 
     Returns for each product:
     - Product ID and name
@@ -149,10 +173,16 @@ def get_top_products_by_revenue(
 
     Results are ordered by revenue (highest first).
     """
+    if fecha_inicio and fecha_fin and fecha_inicio > fecha_fin:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="fecha_inicio must be before or equal to fecha_fin"
+        )
+
     analytics_service = AnalyticsService(db)
 
     try:
-        result = analytics_service.get_top_products_by_revenue(limit)
+        result = analytics_service.get_top_products_by_revenue(limit, fecha_inicio, fecha_fin)
         return ProductAnalyticsResponse(**result)
     except Exception as e:
         raise HTTPException(

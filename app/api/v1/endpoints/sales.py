@@ -65,10 +65,14 @@ def get_total_sales(
     description="Get sales aggregated by month"
 )
 def get_monthly_trend(
+    fecha_inicio: Optional[date] = Query(None, description="Start date (YYYY-MM-DD)"),
+    fecha_fin: Optional[date] = Query(None, description="End date (YYYY-MM-DD)"),
     db: Session = Depends(get_db)
 ):
     """
     Get monthly sales trend.
+
+    Optionally filter by date range using fecha_inicio and fecha_fin.
 
     Returns sales data grouped by year and month, including:
     - Total sales per month
@@ -77,10 +81,16 @@ def get_monthly_trend(
 
     Data is ordered chronologically (oldest first).
     """
+    if fecha_inicio and fecha_fin and fecha_inicio > fecha_fin:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="fecha_inicio must be before or equal to fecha_fin"
+        )
+
     sales_service = SalesService(db)
 
     try:
-        result = sales_service.get_monthly_trend()
+        result = sales_service.get_monthly_trend(fecha_inicio, fecha_fin)
         return MonthlyTrendResponse(data=result)
     except Exception as e:
         raise HTTPException(
