@@ -54,6 +54,7 @@ class Settings(BaseSettings):
 
     # API Configuration
     API_V1_PREFIX: str = Field(default="/api/v1", description="API v1 path prefix")
+    PORT: int = Field(default=8000, description="Server port")
 
     class Config:
         env_file = ".env"
