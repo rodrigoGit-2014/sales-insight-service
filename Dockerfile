@@ -16,7 +16,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app /app/app
 COPY celery_app /app/celery_app
 COPY start.sh /app/start.sh
-RUN chmod +x /app/start.sh
+COPY docker /app/docker
+COPY scripts /app/scripts
+RUN chmod +x /app/start.sh /app/scripts/*.py
 
 # Create necessary directories
 RUN mkdir -p /app/uploads /app/logs

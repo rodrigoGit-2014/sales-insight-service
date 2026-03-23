@@ -7,6 +7,7 @@ from decimal import Decimal
 from typing import Dict, List
 from celery import Task
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy import text
 
 from celery_app.celery import celery_app
 from app.db.session import SessionLocal
@@ -169,6 +170,9 @@ def process_transactions_task(self, job_id: str, file_path: str) -> Dict:
             f"Processed: {total_processed}, Errors: {total_errors}"
         )
 
+        # Refresh materialized views after processing data
+        _refresh_materialized_views(db)
+
         return {
             'status': 'completed',
             'processed': total_processed,
@@ -237,3 +241,56 @@ def _parse_time(time_str: str) -> time:
             continue
 
     raise ValueError(f"Invalid time format: {time_str}")
+
+
+def _refresh_materialized_views(db):
+    """
+    Refresh all materialized views after data processing.
+    This ensures analytical queries have up-to-date data.
+    """
+    try:
+        logger.info("Refreshing materialized views...")
+
+        # Check if views exist before refreshing
+        result = db.execute(text("""
+            SELECT matviewname
+            FROM pg_matviews
+            WHERE schemaname = 'public'
+            AND matviewname IN (
+                'mv_daily_sales',
+                'mv_monthly_trend',
+                'mv_department_analytics',
+                'mv_section_analytics',
+                'mv_product_analytics',
+                'mv_customer_top'
+            )
+        """))
+        existing_views = [row[0] for row in result.fetchall()]
+
+        if not existing_views:
+            logger.warning("No materialized views found to refresh. Creating them...")
+            # Import and call the create function
+            from app.db.session import create_materialized_views
+            create_materialized_views()
+            return
+
+        # Refresh each view that exists
+        for view_name in existing_views:
+            try:
+                db.execute(text(f"REFRESH MATERIALIZED VIEW CONCURRENTLY {view_name}"))
+                logger.info(f"✓ Refreshed {view_name}")
+            except Exception as e:
+                # If CONCURRENTLY fails (no unique index), try without it
+                try:
+                    db.execute(text(f"REFRESH MATERIALIZED VIEW {view_name}"))
+                    logger.info(f"✓ Refreshed {view_name} (non-concurrent)")
+                except Exception as e2:
+                    logger.error(f"Failed to refresh {view_name}: {e2}")
+
+        db.commit()
+        logger.info("✓ All materialized views refreshed successfully")
+
+    except Exception as e:
+        logger.error(f"Error refreshing materialized views: {e}")
+        # Don't fail the task if view refresh fails
+        pass

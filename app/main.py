@@ -56,8 +56,14 @@ app.include_router(
 @app.on_event("startup")
 async def startup_event():
     """Execute on application startup"""
-    from app.db.session import create_tables
+    from app.db.session import create_tables, create_materialized_views
+
+    # Create base tables if they don't exist
     create_tables()
+
+    # Create materialized views if they don't exist and there's data
+    create_materialized_views()
+
     logger.info(
         f"Starting {settings.APP_NAME} v{settings.APP_VERSION}",
         extra={
@@ -183,6 +189,74 @@ def celery_health_check():
             "status": "error",
             "message": f"Failed to connect to Celery: {str(e)}",
             "broker_url": settings.CELERY_BROKER_URL.split('@')[-1] if '@' in settings.CELERY_BROKER_URL else "configured"
+        }
+
+
+@app.get(
+    "/db-health",
+    status_code=status.HTTP_200_OK,
+    tags=["Health"],
+    summary="Database and materialized views health check",
+    description="Check database connectivity and materialized views status"
+)
+def db_health_check():
+    """
+    Database health check endpoint.
+
+    Checks database connectivity and materialized views status.
+    """
+    from sqlalchemy import text
+    from app.db.session import engine
+
+    try:
+        with engine.connect() as conn:
+            # Check database connectivity
+            conn.execute(text("SELECT 1"))
+
+            # Check tickets table
+            result = conn.execute(text("SELECT COUNT(*) FROM tickets"))
+            ticket_count = result.scalar()
+
+            # Check materialized views
+            result = conn.execute(text("""
+                SELECT matviewname,
+                       pg_size_pretty(pg_total_relation_size(schemaname||'.'||matviewname)) as size
+                FROM pg_matviews
+                WHERE schemaname = 'public'
+                ORDER BY matviewname
+            """))
+            views = [{"name": row[0], "size": row[1]} for row in result.fetchall()]
+
+            # Check if all required views exist
+            required_views = {
+                'mv_daily_sales',
+                'mv_monthly_trend',
+                'mv_department_analytics',
+                'mv_section_analytics',
+                'mv_product_analytics',
+                'mv_customer_top'
+            }
+            existing_views = {v['name'] for v in views}
+            missing_views = required_views - existing_views
+
+            return {
+                "status": "healthy" if not missing_views else "degraded",
+                "database": "connected",
+                "ticket_count": ticket_count,
+                "materialized_views": {
+                    "total": len(views),
+                    "required": len(required_views),
+                    "missing": list(missing_views) if missing_views else [],
+                    "views": views
+                },
+                "message": "All systems operational" if not missing_views else f"Missing views: {', '.join(missing_views)}"
+            }
+
+    except Exception as e:
+        return {
+            "status": "unhealthy",
+            "database": "error",
+            "message": f"Database error: {str(e)}"
         }
 
 

@@ -1,10 +1,14 @@
 """Database session management with SQLAlchemy"""
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, Session
 from typing import Generator
+import logging
+from pathlib import Path
 
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 # Create SQLAlchemy engine
 engine = create_engine(
@@ -46,6 +50,66 @@ def create_tables():
     """Create all tables defined in models (for testing/development)"""
     from app.db.base import Base
     Base.metadata.create_all(bind=engine)
+
+
+def create_materialized_views():
+    """
+    Create materialized views if they don't exist.
+    This function is idempotent and safe to call on every startup.
+    """
+    try:
+        # Check if materialized views already exist
+        with engine.connect() as conn:
+            result = conn.execute(text("""
+                SELECT COUNT(*) as count
+                FROM pg_matviews
+                WHERE schemaname = 'public'
+                AND matviewname IN (
+                    'mv_daily_sales',
+                    'mv_monthly_trend',
+                    'mv_department_analytics',
+                    'mv_section_analytics',
+                    'mv_product_analytics',
+                    'mv_customer_top'
+                )
+            """))
+            existing_views = result.scalar()
+
+            # If all 6 views exist, skip creation
+            if existing_views == 6:
+                logger.info("All materialized views already exist")
+                return
+
+            # Check if tickets table has any data
+            result = conn.execute(text("SELECT COUNT(*) FROM tickets"))
+            ticket_count = result.scalar()
+
+            if ticket_count == 0:
+                logger.info("No data in tickets table, skipping materialized view creation")
+                return
+
+            logger.info(f"Creating materialized views (found {existing_views}/6 views, {ticket_count} tickets)...")
+
+            # Read and execute the SQL file
+            sql_file = Path(__file__).parent.parent.parent / "docker" / "postgres" / "create_materialized_views.sql"
+
+            if not sql_file.exists():
+                logger.warning(f"Materialized views SQL file not found at {sql_file}")
+                return
+
+            with open(sql_file, 'r') as f:
+                sql_content = f.read()
+
+            # Execute the SQL
+            conn.execute(text(sql_content))
+            conn.commit()
+
+            logger.info("✓ Materialized views created successfully")
+
+    except Exception as e:
+        logger.error(f"Failed to create materialized views: {e}")
+        # Don't fail the application startup if view creation fails
+        pass
 
 
 def drop_tables():
