@@ -56,6 +56,8 @@ app.include_router(
 @app.on_event("startup")
 async def startup_event():
     """Execute on application startup"""
+    from app.db.session import create_tables
+    create_tables()
     logger.info(
         f"Starting {settings.APP_NAME} v{settings.APP_VERSION}",
         extra={
