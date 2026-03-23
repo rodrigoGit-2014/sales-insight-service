@@ -142,6 +142,50 @@ def readiness_check():
     }
 
 
+@app.get(
+    "/celery-health",
+    status_code=status.HTTP_200_OK,
+    tags=["Health"],
+    summary="Celery health check",
+    description="Check Celery worker connectivity and queue status"
+)
+def celery_health_check():
+    """
+    Celery health check endpoint.
+
+    Checks if Celery workers are connected and can process tasks.
+    """
+    from celery_app.celery import celery_app
+
+    try:
+        # Check if workers are available
+        inspect = celery_app.control.inspect()
+        active_workers = inspect.active()
+        registered_tasks = inspect.registered()
+
+        if not active_workers:
+            return {
+                "status": "unhealthy",
+                "message": "No Celery workers are running",
+                "active_workers": 0,
+                "broker_url": settings.CELERY_BROKER_URL.split('@')[-1] if '@' in settings.CELERY_BROKER_URL else "configured"
+            }
+
+        return {
+            "status": "healthy",
+            "active_workers": len(active_workers),
+            "workers": list(active_workers.keys()),
+            "registered_tasks": list(registered_tasks.values())[0] if registered_tasks else [],
+            "broker_url": settings.CELERY_BROKER_URL.split('@')[-1] if '@' in settings.CELERY_BROKER_URL else "configured"
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Failed to connect to Celery: {str(e)}",
+            "broker_url": settings.CELERY_BROKER_URL.split('@')[-1] if '@' in settings.CELERY_BROKER_URL else "configured"
+        }
+
+
 if __name__ == "__main__":
     import uvicorn
 

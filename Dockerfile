@@ -15,6 +15,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY app /app/app
 COPY celery_app /app/celery_app
+COPY start.sh /app/start.sh
+RUN chmod +x /app/start.sh
 
 # Create necessary directories
 RUN mkdir -p /app/uploads /app/logs
