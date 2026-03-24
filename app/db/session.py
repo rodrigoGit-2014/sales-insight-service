@@ -47,9 +47,83 @@ def get_db() -> Generator[Session, None, None]:
 
 
 def create_tables():
-    """Create all tables defined in models (for testing/development)"""
+    """Create all tables defined in models and run migrations for new columns."""
     from app.db.base import Base
     Base.metadata.create_all(bind=engine)
+    _run_migrations()
+
+
+def _run_migrations():
+    """Add missing columns to existing tables (lightweight migration)."""
+    migrations = [
+        # Add company_id to tickets if it doesn't exist
+        {
+            "check": """
+                SELECT COUNT(*) FROM information_schema.columns
+                WHERE table_schema = 'public'
+                AND table_name = 'tickets'
+                AND column_name = 'company_id'
+            """,
+            "apply": """
+                ALTER TABLE tickets
+                ADD COLUMN company_id UUID;
+                CREATE INDEX IF NOT EXISTS ix_tickets_company_id ON tickets(company_id);
+            """,
+            "description": "Add company_id column to tickets table",
+        },
+    ]
+    try:
+        with engine.connect() as conn:
+            for migration in migrations:
+                result = conn.execute(text(migration["check"]))
+                if result.scalar() == 0:
+                    logger.info(f"Applying migration: {migration['description']}")
+                    for stmt in migration["apply"].strip().split(";"):
+                        stmt = stmt.strip()
+                        if stmt:
+                            conn.execute(text(stmt))
+                    conn.commit()
+                    logger.info(f"Migration applied: {migration['description']}")
+    except Exception as e:
+        logger.error(f"Failed to run migrations: {e}")
+
+
+def _split_sql_statements(sql_content: str) -> list:
+    """
+    Split SQL content into individual statements, correctly handling $$ blocks.
+    """
+    statements = []
+    current = []
+    in_dollar_block = False
+
+    for line in sql_content.split('\n'):
+        stripped = line.strip()
+
+        # Skip pure comment lines outside of $$ blocks
+        if stripped.startswith('--') and not in_dollar_block:
+            continue
+
+        # Track $$ block boundaries
+        dollar_count = line.count('$$')
+        if dollar_count % 2 == 1:
+            in_dollar_block = not in_dollar_block
+
+        current.append(line)
+
+        # If line ends with ; and we're not inside a $$ block, it's a statement boundary
+        if stripped.endswith(';') and not in_dollar_block:
+            stmt = '\n'.join(current).strip()
+            if stmt:
+                statements.append(stmt)
+            current = []
+
+    # Handle any remaining content
+    if current:
+        stmt = '\n'.join(current).strip()
+        if stmt:
+            statements.append(stmt)
+
+    return statements
 
 
 def create_materialized_views():
@@ -103,8 +177,13 @@ def create_materialized_views():
             with open(sql_file, 'r') as f:
                 sql_content = f.read()
 
-            # Execute the SQL
-            conn.execute(text(sql_content))
+            # Execute each statement separately to avoid issues with $$ blocks
+            # Split on semicolons but preserve $$ function bodies
+            statements = _split_sql_statements(sql_content)
+            for stmt in statements:
+                stmt = stmt.strip()
+                if stmt and not stmt.startswith('--'):
+                    conn.execute(text(stmt))
             conn.commit()
 
             logger.info("✓ Materialized views created successfully")
