@@ -53,17 +53,55 @@ app.include_router(
 )
 
 
+def _create_matview_trigger(engine):
+    """Create a PostgreSQL trigger that refreshes materialized views on tickets changes"""
+    from sqlalchemy import text
+
+    trigger_sql = """
+    CREATE OR REPLACE FUNCTION refresh_sales_matviews()
+    RETURNS TRIGGER AS $$
+    BEGIN
+        REFRESH MATERIALIZED VIEW CONCURRENTLY mv_daily_sales;
+        REFRESH MATERIALIZED VIEW CONCURRENTLY mv_monthly_trend;
+        REFRESH MATERIALIZED VIEW CONCURRENTLY mv_department_analytics;
+        REFRESH MATERIALIZED VIEW CONCURRENTLY mv_section_analytics;
+        REFRESH MATERIALIZED VIEW CONCURRENTLY mv_product_analytics;
+        REFRESH MATERIALIZED VIEW CONCURRENTLY mv_customer_top;
+        RETURN NULL;
+    EXCEPTION WHEN OTHERS THEN
+        REFRESH MATERIALIZED VIEW mv_daily_sales;
+        REFRESH MATERIALIZED VIEW mv_monthly_trend;
+        REFRESH MATERIALIZED VIEW mv_department_analytics;
+        REFRESH MATERIALIZED VIEW mv_section_analytics;
+        REFRESH MATERIALIZED VIEW mv_product_analytics;
+        REFRESH MATERIALIZED VIEW mv_customer_top;
+        RETURN NULL;
+    END;
+    $$ LANGUAGE plpgsql;
+
+    DROP TRIGGER IF EXISTS trg_refresh_sales_matviews ON tickets;
+
+    CREATE TRIGGER trg_refresh_sales_matviews
+    AFTER INSERT OR UPDATE OR DELETE OR TRUNCATE
+    ON tickets
+    FOR EACH STATEMENT
+    EXECUTE FUNCTION refresh_sales_matviews();
+    """
+    with engine.connect() as conn:
+        conn.execute(text(trigger_sql))
+        conn.commit()
+    logger.info("Materialized view trigger created on tickets table")
+
+
 @app.on_event("startup")
 async def startup_event():
     """Execute on application startup"""
-    from app.db.session import create_tables, create_materialized_views
-
-    # Create base tables if they don't exist
+    from app.db.session import create_tables, engine
     create_tables()
-
-    # Create materialized views if they don't exist and there's data
-    create_materialized_views()
-
+    try:
+        _create_matview_trigger(engine)
+    except Exception as e:
+        logger.warning(f"Could not create matview trigger: {e}")
     logger.info(
         f"Starting {settings.APP_NAME} v{settings.APP_VERSION}",
         extra={
