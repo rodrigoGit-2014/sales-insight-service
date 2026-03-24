@@ -4,11 +4,13 @@ import csv
 import io
 import unicodedata
 
-from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, status
+from typing import List
+from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, status, Body
 from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.api.deps import get_db
+from app.api.auth_deps import get_current_user, TokenData
 from app.models.departamento import Departamento
 from app.models.seccion import Seccion
 from app.schemas.config import (
@@ -21,7 +23,7 @@ from app.schemas.config import (
 router = APIRouter(prefix="/config", tags=["Configuration"])
 
 # ---------------------------------------------------------------------------
-# Icon mapping: keyword (lowercase, no accents) → lucide icon name
+# Icon mapping: keyword (lowercase, no accents) -> lucide icon name
 # ---------------------------------------------------------------------------
 ICON_MAP = {
     "fruta": "apple",
@@ -137,8 +139,8 @@ def _parse_csv(content: bytes, required_columns: list[str]) -> list[dict]:
     response_model=list[DepartamentoResponse],
     summary="List all departamentos",
 )
-def list_departamentos(db: Session = Depends(get_db)):
-    return db.query(Departamento).order_by(Departamento.nombre).all()
+def list_departamentos(db: Session = Depends(get_db), current_user: TokenData = Depends(get_current_user)):
+    return db.query(Departamento).filter(Departamento.company_id == current_user.company_id).order_by(Departamento.nombre).all()
 
 
 @router.post(
@@ -150,6 +152,7 @@ def list_departamentos(db: Session = Depends(get_db)):
 async def upload_departamentos(
     file: UploadFile = File(..., description="CSV with id_departamento,nombre"),
     db: Session = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user),
 ):
     if not file.filename.endswith(".csv"):
         raise HTTPException(
@@ -172,13 +175,13 @@ async def upload_departamentos(
         nombre = row["nombre"]
         icono = assign_icon(nombre)
         items.append(
-            {"id_departamento": id_dep, "nombre": nombre, "icono_name": icono}
+            {"id_departamento": id_dep, "nombre": nombre, "icono_name": icono, "company_id": current_user.company_id}
         )
 
-    # Upsert using PostgreSQL ON CONFLICT
+    # Upsert using PostgreSQL ON CONFLICT (composite PK)
     stmt = pg_insert(Departamento).values(items)
     stmt = stmt.on_conflict_do_update(
-        index_elements=["id_departamento"],
+        index_elements=["company_id", "id_departamento"],
         set_={"nombre": stmt.excluded.nombre, "icono_name": stmt.excluded.icono_name},
     )
     db.execute(stmt)
@@ -189,6 +192,7 @@ async def upload_departamentos(
     saved = (
         db.query(Departamento)
         .filter(Departamento.id_departamento.in_(ids))
+        .filter(Departamento.company_id == current_user.company_id)
         .order_by(Departamento.nombre)
         .all()
     )
@@ -197,6 +201,23 @@ async def upload_departamentos(
         count=len(saved),
         items=[DepartamentoResponse.model_validate(s) for s in saved],
     )
+
+
+@router.delete(
+    "/departamentos",
+    summary="Delete departamentos by IDs or all",
+)
+def delete_departamentos(
+    ids: List[int] = Body(default=None, embed=True, description="List of id_departamento to delete. Omit or null to delete all."),
+    db: Session = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user),
+):
+    query = db.query(Departamento).filter(Departamento.company_id == current_user.company_id)
+    if ids:
+        query = query.filter(Departamento.id_departamento.in_(ids))
+    count = query.delete(synchronize_session=False)
+    db.commit()
+    return {"deleted": count}
 
 
 # ---------------------------------------------------------------------------
@@ -208,8 +229,8 @@ async def upload_departamentos(
     response_model=list[SeccionResponse],
     summary="List all secciones",
 )
-def list_secciones(db: Session = Depends(get_db)):
-    return db.query(Seccion).order_by(Seccion.nombre).all()
+def list_secciones(db: Session = Depends(get_db), current_user: TokenData = Depends(get_current_user)):
+    return db.query(Seccion).filter(Seccion.company_id == current_user.company_id).order_by(Seccion.nombre).all()
 
 
 @router.post(
@@ -221,6 +242,7 @@ def list_secciones(db: Session = Depends(get_db)):
 async def upload_secciones(
     file: UploadFile = File(..., description="CSV with id_seccion,nombre"),
     db: Session = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user),
 ):
     if not file.filename.endswith(".csv"):
         raise HTTPException(
@@ -243,12 +265,12 @@ async def upload_secciones(
         nombre = row["nombre"]
         icono = assign_icon(nombre)
         items.append(
-            {"id_seccion": id_sec, "nombre": nombre, "icono_name": icono}
+            {"id_seccion": id_sec, "nombre": nombre, "icono_name": icono, "company_id": current_user.company_id}
         )
 
     stmt = pg_insert(Seccion).values(items)
     stmt = stmt.on_conflict_do_update(
-        index_elements=["id_seccion"],
+        index_elements=["company_id", "id_seccion"],
         set_={"nombre": stmt.excluded.nombre, "icono_name": stmt.excluded.icono_name},
     )
     db.execute(stmt)
@@ -258,6 +280,7 @@ async def upload_secciones(
     saved = (
         db.query(Seccion)
         .filter(Seccion.id_seccion.in_(ids))
+        .filter(Seccion.company_id == current_user.company_id)
         .order_by(Seccion.nombre)
         .all()
     )
@@ -266,3 +289,20 @@ async def upload_secciones(
         count=len(saved),
         items=[SeccionResponse.model_validate(s) for s in saved],
     )
+
+
+@router.delete(
+    "/secciones",
+    summary="Delete secciones by IDs or all",
+)
+def delete_secciones(
+    ids: List[int] = Body(default=None, embed=True, description="List of id_seccion to delete. Omit or null to delete all."),
+    db: Session = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user),
+):
+    query = db.query(Seccion).filter(Seccion.company_id == current_user.company_id)
+    if ids:
+        query = query.filter(Seccion.id_seccion.in_(ids))
+    count = query.delete(synchronize_session=False)
+    db.commit()
+    return {"deleted": count}

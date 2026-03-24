@@ -4,6 +4,7 @@ from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db
+from app.api.auth_deps import get_current_user, TokenData
 from app.services.upload_service import UploadService
 from app.schemas.job import JobCreateResponse
 from app.models.job import JobStatus
@@ -24,7 +25,8 @@ router = APIRouter()
 )
 async def upload_transactions(
     file: UploadFile = File(..., description="CSV file with transactions"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user)
 ):
     """
     Upload transactions CSV file for processing.
@@ -65,7 +67,7 @@ async def upload_transactions(
     upload_service = UploadService(db)
 
     try:
-        job = upload_service.create_upload_job(file.filename, file_content)
+        job = upload_service.create_upload_job(file.filename, file_content, current_user.company_id)
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

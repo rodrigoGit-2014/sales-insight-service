@@ -52,6 +52,12 @@ class Settings(BaseSettings):
         description="Allowed CORS origins"
     )
 
+    # JWT Configuration
+    JWT_SECRET: str = Field(
+        default="change-me-in-production-use-a-long-random-string",
+        description="Secret key for JWT signing"
+    )
+
     # API Configuration
     API_V1_PREFIX: str = Field(default="/api/v1", description="API v1 path prefix")
     PORT: int = Field(default=8000, description="Server port")

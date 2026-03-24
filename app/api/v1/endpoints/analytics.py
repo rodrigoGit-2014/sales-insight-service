@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Query, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db
+from app.api.auth_deps import get_current_user, TokenData
 from app.services.analytics_service import AnalyticsService
 from app.schemas.analytics import (
     DepartmentAnalyticsResponse,
@@ -28,7 +29,8 @@ router = APIRouter()
 def get_department_analytics(
     fecha_inicio: Optional[date] = Query(None, description="Start date (YYYY-MM-DD)"),
     fecha_fin: Optional[date] = Query(None, description="End date (YYYY-MM-DD)"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user)
 ):
     """
     Get sales analytics by department.
@@ -51,7 +53,7 @@ def get_department_analytics(
     analytics_service = AnalyticsService(db)
 
     try:
-        result = analytics_service.get_department_analytics(fecha_inicio, fecha_fin)
+        result = analytics_service.get_department_analytics(current_user.company_id, fecha_inicio, fecha_fin)
         return DepartmentAnalyticsResponse(data=result)
     except Exception as e:
         raise HTTPException(
@@ -69,7 +71,8 @@ def get_department_analytics(
 def get_section_analytics(
     fecha_inicio: Optional[date] = Query(None, description="Start date (YYYY-MM-DD)"),
     fecha_fin: Optional[date] = Query(None, description="End date (YYYY-MM-DD)"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user)
 ):
     """
     Get sales analytics by section.
@@ -94,7 +97,7 @@ def get_section_analytics(
     analytics_service = AnalyticsService(db)
 
     try:
-        result = analytics_service.get_section_analytics(fecha_inicio, fecha_fin)
+        result = analytics_service.get_section_analytics(current_user.company_id, fecha_inicio, fecha_fin)
         return SectionAnalyticsResponse(data=result)
     except Exception as e:
         raise HTTPException(
@@ -113,7 +116,8 @@ def get_top_products_by_quantity(
     limit: int = Query(10, ge=1, le=100, description="Number of products to return"),
     fecha_inicio: Optional[date] = Query(None, description="Start date (YYYY-MM-DD)"),
     fecha_fin: Optional[date] = Query(None, description="End date (YYYY-MM-DD)"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user)
 ):
     """
     Get top products by quantity sold.
@@ -138,7 +142,7 @@ def get_top_products_by_quantity(
     analytics_service = AnalyticsService(db)
 
     try:
-        result = analytics_service.get_top_products_by_quantity(limit, fecha_inicio, fecha_fin)
+        result = analytics_service.get_top_products_by_quantity(current_user.company_id, limit, fecha_inicio, fecha_fin)
         return ProductAnalyticsResponse(**result)
     except Exception as e:
         raise HTTPException(
@@ -157,7 +161,8 @@ def get_top_products_by_revenue(
     limit: int = Query(10, ge=1, le=100, description="Number of products to return"),
     fecha_inicio: Optional[date] = Query(None, description="Start date (YYYY-MM-DD)"),
     fecha_fin: Optional[date] = Query(None, description="End date (YYYY-MM-DD)"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user)
 ):
     """
     Get top products by revenue.
@@ -182,7 +187,7 @@ def get_top_products_by_revenue(
     analytics_service = AnalyticsService(db)
 
     try:
-        result = analytics_service.get_top_products_by_revenue(limit, fecha_inicio, fecha_fin)
+        result = analytics_service.get_top_products_by_revenue(current_user.company_id, limit, fecha_inicio, fecha_fin)
         return ProductAnalyticsResponse(**result)
     except Exception as e:
         raise HTTPException(
@@ -201,7 +206,8 @@ def get_top_customers(
     limit: int = Query(20, ge=1, le=100, description="Number of customers to return"),
     fecha_inicio: Optional[date] = Query(None, description="Start date (YYYY-MM-DD)"),
     fecha_fin: Optional[date] = Query(None, description="End date (YYYY-MM-DD)"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user)
 ):
     """
     Get top customers by total spend.
@@ -226,7 +232,7 @@ def get_top_customers(
     analytics_service = AnalyticsService(db)
 
     try:
-        result = analytics_service.get_top_customers(limit, fecha_inicio, fecha_fin)
+        result = analytics_service.get_top_customers(current_user.company_id, limit, fecha_inicio, fecha_fin)
         return CustomerAnalyticsResponse(**result)
     except Exception as e:
         raise HTTPException(
@@ -244,7 +250,8 @@ def get_top_customers(
 def get_customer_average_spend(
     fecha_inicio: Optional[date] = Query(None, description="Start date (YYYY-MM-DD)"),
     fecha_fin: Optional[date] = Query(None, description="End date (YYYY-MM-DD)"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user)
 ):
     """
     Get average spend per customer.
@@ -265,7 +272,7 @@ def get_customer_average_spend(
     analytics_service = AnalyticsService(db)
 
     try:
-        result = analytics_service.get_customer_average_spend(fecha_inicio, fecha_fin)
+        result = analytics_service.get_customer_average_spend(current_user.company_id, fecha_inicio, fecha_fin)
         return AverageSpendResponse(**result)
     except Exception as e:
         raise HTTPException(
@@ -283,7 +290,8 @@ def get_customer_average_spend(
 def get_order_count(
     fecha_inicio: Optional[date] = Query(None, description="Start date (YYYY-MM-DD)"),
     fecha_fin: Optional[date] = Query(None, description="End date (YYYY-MM-DD)"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user)
 ):
     """
     Get order statistics.
@@ -304,7 +312,7 @@ def get_order_count(
     analytics_service = AnalyticsService(db)
 
     try:
-        result = analytics_service.get_order_statistics(fecha_inicio, fecha_fin)
+        result = analytics_service.get_order_statistics(current_user.company_id, fecha_inicio, fecha_fin)
         return OrderStatsResponse(**result)
     except Exception as e:
         raise HTTPException(
@@ -320,7 +328,8 @@ def get_order_count(
     description="Calculate average order value"
 )
 def get_average_order_value(
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user)
 ):
     """
     Get average order value.
@@ -333,7 +342,7 @@ def get_average_order_value(
     analytics_service = AnalyticsService(db)
 
     try:
-        result = analytics_service.get_order_statistics()
+        result = analytics_service.get_order_statistics(current_user.company_id)
         return OrderStatsResponse(**result)
     except Exception as e:
         raise HTTPException(

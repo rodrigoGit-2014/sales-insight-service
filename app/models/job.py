@@ -37,6 +37,9 @@ class Job(Base):
         comment="Unique job identifier"
     )
 
+    # Tenant
+    company_id = Column(UUID(as_uuid=True), nullable=False, index=True, comment="Company/tenant ID")
+
     # Job Status
     status = Column(
         SQLAlchemyEnum(JobStatus, name="job_status", values_callable=lambda x: [e.value for e in x]),

@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from pydantic import UUID4
 
 from app.api.deps import get_db
+from app.api.auth_deps import get_current_user, TokenData
 from app.services.upload_service import UploadService
 from app.schemas.job import JobResponse
 
@@ -19,7 +20,8 @@ router = APIRouter()
 )
 def get_job_status(
     job_id: UUID4 = Path(..., description="Job UUID"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user)
 ):
     """
     Get job processing status.

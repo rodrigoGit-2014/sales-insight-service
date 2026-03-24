@@ -1,6 +1,7 @@
 """Ticket model representing sales transactions"""
 
 from sqlalchemy import Column, BigInteger, String, Date, Time, Numeric, Integer, DateTime, CheckConstraint
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.sql import func
 from datetime import date, time
 from decimal import Decimal
@@ -20,6 +21,9 @@ class Ticket(Base):
 
     # Primary Key
     id = Column(BigInteger, primary_key=True, autoincrement=True, index=True)
+
+    # Tenant
+    company_id = Column(PGUUID(as_uuid=True), nullable=False, index=True, comment="Company/tenant ID")
 
     # Transaction Identifiers
     id_pedido = Column(String(100), nullable=False, comment="Order ID")

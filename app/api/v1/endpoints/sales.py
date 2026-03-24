@@ -6,6 +6,7 @@ from datetime import date
 from typing import Optional
 
 from app.api.deps import get_db
+from app.api.auth_deps import get_current_user, TokenData
 from app.services.sales_service import SalesService
 from app.schemas.sales import SalesTotalResponse, MonthlyTrendResponse
 
@@ -27,7 +28,8 @@ def get_total_sales(
         None,
         description="End date (inclusive). Format: YYYY-MM-DD"
     ),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user)
 ):
     """
     Get total sales for a date range.
@@ -49,7 +51,7 @@ def get_total_sales(
     sales_service = SalesService(db)
 
     try:
-        result = sales_service.get_total_sales(fecha_inicio, fecha_fin)
+        result = sales_service.get_total_sales(current_user.company_id, fecha_inicio, fecha_fin)
         return SalesTotalResponse(**result)
     except Exception as e:
         raise HTTPException(
@@ -67,7 +69,8 @@ def get_total_sales(
 def get_monthly_trend(
     fecha_inicio: Optional[date] = Query(None, description="Start date (YYYY-MM-DD)"),
     fecha_fin: Optional[date] = Query(None, description="End date (YYYY-MM-DD)"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user)
 ):
     """
     Get monthly sales trend.
@@ -90,7 +93,7 @@ def get_monthly_trend(
     sales_service = SalesService(db)
 
     try:
-        result = sales_service.get_monthly_trend(fecha_inicio, fecha_fin)
+        result = sales_service.get_monthly_trend(current_user.company_id, fecha_inicio, fecha_fin)
         return MonthlyTrendResponse(data=result)
     except Exception as e:
         raise HTTPException(

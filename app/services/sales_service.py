@@ -2,6 +2,7 @@
 
 from typing import Dict, List, Any, Optional
 from datetime import date
+from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.repositories.ticket_repository import TicketRepository
@@ -16,6 +17,7 @@ class SalesService:
 
     def get_total_sales(
         self,
+        company_id: UUID,
         fecha_inicio: Optional[date] = None,
         fecha_fin: Optional[date] = None
     ) -> Dict[str, Any]:
@@ -23,13 +25,14 @@ class SalesService:
         Get total sales for a date range.
 
         Args:
+            company_id: Company/tenant UUID
             fecha_inicio: Start date (inclusive)
             fecha_fin: End date (inclusive)
 
         Returns:
             Dictionary with sales totals and statistics
         """
-        result = self.ticket_repository.get_total_sales(fecha_inicio, fecha_fin)
+        result = self.ticket_repository.get_total_sales(company_id, fecha_inicio, fecha_fin)
 
         # Add date range to response
         result['fecha_inicio'] = fecha_inicio
@@ -39,6 +42,7 @@ class SalesService:
 
     def get_monthly_trend(
         self,
+        company_id: UUID,
         fecha_inicio: Optional[date] = None,
         fecha_fin: Optional[date] = None
     ) -> List[Dict[str, Any]]:
@@ -46,16 +50,18 @@ class SalesService:
         Get monthly sales trend.
 
         Args:
+            company_id: Company/tenant UUID
             fecha_inicio: Start date (inclusive)
             fecha_fin: End date (inclusive)
 
         Returns:
             List of monthly sales data
         """
-        return self.ticket_repository.get_monthly_trend(fecha_inicio, fecha_fin)
+        return self.ticket_repository.get_monthly_trend(company_id, fecha_inicio, fecha_fin)
 
     def get_sales_by_date_range(
         self,
+        company_id: UUID,
         fecha_inicio: date,
         fecha_fin: date
     ) -> Dict[str, Any]:
@@ -63,13 +69,14 @@ class SalesService:
         Get detailed sales information for a date range.
 
         Args:
+            company_id: Company/tenant UUID
             fecha_inicio: Start date
             fecha_fin: End date
 
         Returns:
             Dictionary with detailed sales data
         """
-        sales_data = self.ticket_repository.get_total_sales(fecha_inicio, fecha_fin)
+        sales_data = self.ticket_repository.get_total_sales(company_id, fecha_inicio, fecha_fin)
 
         # Calculate additional metrics
         days_in_range = (fecha_fin - fecha_inicio).days + 1

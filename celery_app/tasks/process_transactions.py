@@ -4,6 +4,7 @@ import os
 import logging
 from datetime import datetime, date, time
 from decimal import Decimal
+from uuid import UUID
 from typing import Dict, List
 from celery import Task
 from sqlalchemy.exc import SQLAlchemyError
@@ -33,7 +34,7 @@ class TransactionProcessingTask(Task):
 
 
 @celery_app.task(bind=True, base=TransactionProcessingTask, name='process_transactions')
-def process_transactions_task(self, job_id: str, file_path: str) -> Dict:
+def process_transactions_task(self, job_id: str, file_path: str, company_id: str) -> Dict:
     """
     Process CSV transactions file in streaming mode with batch inserts.
 
@@ -115,7 +116,8 @@ def process_transactions_task(self, job_id: str, file_path: str) -> Dict:
                             nombre_producto=str(row['nombre_producto']),
                             precio_unitario=Decimal(str(row['precio_unitario'])),
                             cantidad=int(row['cantidad']),
-                            precio_total=Decimal(str(row['precio_total']))
+                            precio_total=Decimal(str(row['precio_total'])),
+                            company_id=UUID(company_id),
                         )
                         tickets.append(ticket)
                     except (ValueError, TypeError, KeyError) as e:

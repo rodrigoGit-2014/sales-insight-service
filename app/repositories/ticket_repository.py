@@ -3,6 +3,7 @@
 from typing import List, Optional, Dict, Any
 from datetime import date
 from decimal import Decimal
+from uuid import UUID
 from sqlalchemy import func, desc, and_, text
 from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.orm import Session
@@ -47,6 +48,7 @@ class TicketRepository(BaseRepository[Ticket]):
 
     def get_total_sales(
         self,
+        company_id: UUID,
         fecha_inicio: Optional[date] = None,
         fecha_fin: Optional[date] = None
     ) -> Dict[str, Any]:
@@ -54,6 +56,7 @@ class TicketRepository(BaseRepository[Ticket]):
         Calculate total sales for a date range.
 
         Args:
+            company_id: Company/tenant UUID
             fecha_inicio: Start date (inclusive)
             fecha_fin: End date (inclusive)
 
@@ -62,7 +65,9 @@ class TicketRepository(BaseRepository[Ticket]):
         """
         self._ensure_materialized_views()
         params = {}
+        params['company_id'] = company_id
         where_clauses = []
+        where_clauses.append("company_id = :company_id")
 
         if fecha_inicio:
             params['fecha_inicio'] = fecha_inicio
@@ -71,7 +76,7 @@ class TicketRepository(BaseRepository[Ticket]):
             params['fecha_fin'] = fecha_fin
             where_clauses.append("fecha <= :fecha_fin")
 
-        where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
+        where_sql = f"WHERE {' AND '.join(where_clauses)}"
 
         result = self.db.execute(
             text(f"""
@@ -97,6 +102,7 @@ class TicketRepository(BaseRepository[Ticket]):
 
     def get_monthly_trend(
         self,
+        company_id: UUID,
         fecha_inicio: Optional[date] = None,
         fecha_fin: Optional[date] = None
     ) -> List[Dict[str, Any]]:
@@ -105,6 +111,7 @@ class TicketRepository(BaseRepository[Ticket]):
         Uses mv_monthly_trend materialized view for performance.
 
         Args:
+            company_id: Company/tenant UUID
             fecha_inicio: Start date (inclusive)
             fecha_fin: End date (inclusive)
 
@@ -112,7 +119,7 @@ class TicketRepository(BaseRepository[Ticket]):
             List of dictionaries with year, month, total_sales, order_count, avg_order_value
         """
         self._ensure_materialized_views()
-        where_sql, params = self._monthly_trend_filter(fecha_inicio, fecha_fin)
+        where_sql, params = self._monthly_trend_filter(company_id, fecha_inicio, fecha_fin)
 
         results = self.db.execute(
             text(f"""
@@ -141,6 +148,7 @@ class TicketRepository(BaseRepository[Ticket]):
 
     def get_department_analytics(
         self,
+        company_id: UUID,
         fecha_inicio: Optional[date] = None,
         fecha_fin: Optional[date] = None
     ) -> List[Dict[str, Any]]:
@@ -149,6 +157,7 @@ class TicketRepository(BaseRepository[Ticket]):
         Uses mv_department_analytics materialized view for performance.
 
         Args:
+            company_id: Company/tenant UUID
             fecha_inicio: Start date (inclusive)
             fecha_fin: End date (inclusive)
 
@@ -157,7 +166,9 @@ class TicketRepository(BaseRepository[Ticket]):
         """
         self._ensure_materialized_views()
         params = {}
+        params['company_id'] = company_id
         where_clauses = []
+        where_clauses.append("company_id = :company_id")
 
         if fecha_inicio:
             params['fecha_inicio'] = fecha_inicio
@@ -166,7 +177,7 @@ class TicketRepository(BaseRepository[Ticket]):
             params['fecha_fin'] = fecha_fin
             where_clauses.append("fecha <= :fecha_fin")
 
-        where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
+        where_sql = f"WHERE {' AND '.join(where_clauses)}"
 
         results = self.db.execute(
             text(f"""
@@ -203,6 +214,7 @@ class TicketRepository(BaseRepository[Ticket]):
 
     def get_section_analytics(
         self,
+        company_id: UUID,
         fecha_inicio: Optional[date] = None,
         fecha_fin: Optional[date] = None
     ) -> List[Dict[str, Any]]:
@@ -211,6 +223,7 @@ class TicketRepository(BaseRepository[Ticket]):
         Uses mv_section_analytics materialized view for performance.
 
         Args:
+            company_id: Company/tenant UUID
             fecha_inicio: Start date (inclusive)
             fecha_fin: End date (inclusive)
 
@@ -219,7 +232,9 @@ class TicketRepository(BaseRepository[Ticket]):
         """
         self._ensure_materialized_views()
         params = {}
+        params['company_id'] = company_id
         where_clauses = []
+        where_clauses.append("company_id = :company_id")
 
         if fecha_inicio:
             params['fecha_inicio'] = fecha_inicio
@@ -228,7 +243,7 @@ class TicketRepository(BaseRepository[Ticket]):
             params['fecha_fin'] = fecha_fin
             where_clauses.append("fecha <= :fecha_fin")
 
-        where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
+        where_sql = f"WHERE {' AND '.join(where_clauses)}"
 
         results = self.db.execute(
             text(f"""
@@ -266,6 +281,7 @@ class TicketRepository(BaseRepository[Ticket]):
 
     def get_top_products_by_quantity(
         self,
+        company_id: UUID,
         limit: int = 10,
         fecha_inicio: Optional[date] = None,
         fecha_fin: Optional[date] = None
@@ -275,6 +291,7 @@ class TicketRepository(BaseRepository[Ticket]):
         Uses mv_product_analytics materialized view for performance.
 
         Args:
+            company_id: Company/tenant UUID
             limit: Number of top products to return
             fecha_inicio: Start date (inclusive)
             fecha_fin: End date (inclusive)
@@ -284,7 +301,9 @@ class TicketRepository(BaseRepository[Ticket]):
         """
         self._ensure_materialized_views()
         params = {"limit": limit}
+        params['company_id'] = company_id
         where_clauses = []
+        where_clauses.append("company_id = :company_id")
 
         if fecha_inicio:
             params['fecha_inicio'] = fecha_inicio
@@ -293,7 +312,7 @@ class TicketRepository(BaseRepository[Ticket]):
             params['fecha_fin'] = fecha_fin
             where_clauses.append("fecha <= :fecha_fin")
 
-        where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
+        where_sql = f"WHERE {' AND '.join(where_clauses)}"
 
         results = self.db.execute(
             text(f"""
@@ -325,6 +344,7 @@ class TicketRepository(BaseRepository[Ticket]):
 
     def get_top_products_by_revenue(
         self,
+        company_id: UUID,
         limit: int = 10,
         fecha_inicio: Optional[date] = None,
         fecha_fin: Optional[date] = None
@@ -334,6 +354,7 @@ class TicketRepository(BaseRepository[Ticket]):
         Uses mv_product_analytics materialized view for performance.
 
         Args:
+            company_id: Company/tenant UUID
             limit: Number of top products to return
             fecha_inicio: Start date (inclusive)
             fecha_fin: End date (inclusive)
@@ -343,7 +364,9 @@ class TicketRepository(BaseRepository[Ticket]):
         """
         self._ensure_materialized_views()
         params = {"limit": limit}
+        params['company_id'] = company_id
         where_clauses = []
+        where_clauses.append("company_id = :company_id")
 
         if fecha_inicio:
             params['fecha_inicio'] = fecha_inicio
@@ -352,7 +375,7 @@ class TicketRepository(BaseRepository[Ticket]):
             params['fecha_fin'] = fecha_fin
             where_clauses.append("fecha <= :fecha_fin")
 
-        where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
+        where_sql = f"WHERE {' AND '.join(where_clauses)}"
 
         results = self.db.execute(
             text(f"""
@@ -384,6 +407,7 @@ class TicketRepository(BaseRepository[Ticket]):
 
     def get_top_customers(
         self,
+        company_id: UUID,
         limit: int = 20,
         fecha_inicio: Optional[date] = None,
         fecha_fin: Optional[date] = None
@@ -393,6 +417,7 @@ class TicketRepository(BaseRepository[Ticket]):
         Uses mv_customer_top materialized view for performance.
 
         Args:
+            company_id: Company/tenant UUID
             limit: Number of top customers to return
             fecha_inicio: Start date (inclusive)
             fecha_fin: End date (inclusive)
@@ -402,7 +427,9 @@ class TicketRepository(BaseRepository[Ticket]):
         """
         self._ensure_materialized_views()
         params = {"limit": limit}
+        params['company_id'] = company_id
         where_clauses = []
+        where_clauses.append("company_id = :company_id")
 
         if fecha_inicio:
             params['fecha_inicio'] = fecha_inicio
@@ -411,7 +438,7 @@ class TicketRepository(BaseRepository[Ticket]):
             params['fecha_fin'] = fecha_fin
             where_clauses.append("fecha <= :fecha_fin")
 
-        where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
+        where_sql = f"WHERE {' AND '.join(where_clauses)}"
 
         results = self.db.execute(
             text(f"""
@@ -447,6 +474,7 @@ class TicketRepository(BaseRepository[Ticket]):
 
     def get_customer_average_spend(
         self,
+        company_id: UUID,
         fecha_inicio: Optional[date] = None,
         fecha_fin: Optional[date] = None
     ) -> Dict[str, Any]:
@@ -455,6 +483,7 @@ class TicketRepository(BaseRepository[Ticket]):
         Uses mv_daily_sales materialized view for performance.
 
         Args:
+            company_id: Company/tenant UUID
             fecha_inicio: Start date (inclusive)
             fecha_fin: End date (inclusive)
 
@@ -463,7 +492,9 @@ class TicketRepository(BaseRepository[Ticket]):
         """
         self._ensure_materialized_views()
         params = {}
+        params['company_id'] = company_id
         where_clauses = []
+        where_clauses.append("company_id = :company_id")
 
         if fecha_inicio:
             params['fecha_inicio'] = fecha_inicio
@@ -472,7 +503,7 @@ class TicketRepository(BaseRepository[Ticket]):
             params['fecha_fin'] = fecha_fin
             where_clauses.append("fecha <= :fecha_fin")
 
-        where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
+        where_sql = f"WHERE {' AND '.join(where_clauses)}"
 
         result = self.db.execute(
             text(f"""
@@ -494,10 +525,12 @@ class TicketRepository(BaseRepository[Ticket]):
             'total_sales': total_sales
         }
 
-    def _monthly_trend_filter(self, fecha_inicio=None, fecha_fin=None):
+    def _monthly_trend_filter(self, company_id: UUID, fecha_inicio=None, fecha_fin=None):
         """Build WHERE clause for mv_monthly_trend based on date range."""
         params = {}
+        params['company_id'] = company_id
         where_clauses = []
+        where_clauses.append("company_id = :company_id")
         if fecha_inicio:
             params['start_year'] = fecha_inicio.year
             params['start_month'] = fecha_inicio.month
@@ -506,11 +539,12 @@ class TicketRepository(BaseRepository[Ticket]):
             params['end_year'] = fecha_fin.year
             params['end_month'] = fecha_fin.month
             where_clauses.append("(year < :end_year OR (year = :end_year AND month <= :end_month))")
-        where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
+        where_sql = f"WHERE {' AND '.join(where_clauses)}"
         return where_sql, params
 
     def get_order_count(
         self,
+        company_id: UUID,
         fecha_inicio: Optional[date] = None,
         fecha_fin: Optional[date] = None
     ) -> int:
@@ -519,6 +553,7 @@ class TicketRepository(BaseRepository[Ticket]):
         Uses mv_monthly_trend materialized view for performance.
 
         Args:
+            company_id: Company/tenant UUID
             fecha_inicio: Start date (inclusive)
             fecha_fin: End date (inclusive)
 
@@ -526,7 +561,7 @@ class TicketRepository(BaseRepository[Ticket]):
             Total order count
         """
         self._ensure_materialized_views()
-        where_sql, params = self._monthly_trend_filter(fecha_inicio, fecha_fin)
+        where_sql, params = self._monthly_trend_filter(company_id, fecha_inicio, fecha_fin)
         result = self.db.execute(
             text(f"SELECT COALESCE(SUM(order_count), 0) AS total FROM mv_monthly_trend {where_sql}"),
             params
@@ -535,6 +570,7 @@ class TicketRepository(BaseRepository[Ticket]):
 
     def get_average_order_value(
         self,
+        company_id: UUID,
         fecha_inicio: Optional[date] = None,
         fecha_fin: Optional[date] = None
     ) -> Decimal:
@@ -543,6 +579,7 @@ class TicketRepository(BaseRepository[Ticket]):
         Uses mv_monthly_trend materialized view for performance.
 
         Args:
+            company_id: Company/tenant UUID
             fecha_inicio: Start date (inclusive)
             fecha_fin: End date (inclusive)
 
@@ -550,7 +587,7 @@ class TicketRepository(BaseRepository[Ticket]):
             Average order value
         """
         self._ensure_materialized_views()
-        where_sql, params = self._monthly_trend_filter(fecha_inicio, fecha_fin)
+        where_sql, params = self._monthly_trend_filter(company_id, fecha_inicio, fecha_fin)
         result = self.db.execute(
             text(f"""
                 SELECT COALESCE(SUM(total_sales), 0) AS total_sales,

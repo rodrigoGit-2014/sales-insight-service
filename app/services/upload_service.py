@@ -5,6 +5,7 @@ import uuid
 from pathlib import Path
 from typing import Optional
 from datetime import datetime
+from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.models.job import Job, JobStatus
@@ -24,7 +25,7 @@ class UploadService:
         # Ensure upload directory exists
         self.upload_dir.mkdir(parents=True, exist_ok=True)
 
-    def create_upload_job(self, filename: str, file_content: bytes) -> Job:
+    def create_upload_job(self, filename: str, file_content: bytes, company_id: UUID) -> Job:
         """
         Create a new upload job and save the file.
 
@@ -65,6 +66,7 @@ class UploadService:
             filename=filename,
             file_path=str(file_path),
             status=JobStatus.PENDING,
+            company_id=company_id,
             created_at=datetime.utcnow()
         )
 
@@ -74,7 +76,7 @@ class UploadService:
 
         # Trigger background processing task
         try:
-            process_transactions_task.delay(str(job.id), str(file_path))
+            process_transactions_task.delay(str(job.id), str(file_path), str(company_id))
         except Exception as e:
             # If task creation fails, mark job as failed
             job.status = JobStatus.FAILED
