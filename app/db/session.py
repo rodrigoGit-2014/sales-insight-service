@@ -75,9 +75,20 @@ def create_materialized_views():
             """))
             existing_views = result.scalar()
 
-            # If all 6 views exist, skip creation
+            # Check if views have company_id column (needed for multi-tenant filtering)
+            has_company_id = False
             if existing_views == 6:
-                logger.info("All materialized views already exist")
+                col_result = conn.execute(text("""
+                    SELECT COUNT(*) FROM information_schema.columns
+                    WHERE table_schema = 'public'
+                    AND table_name = 'mv_product_analytics'
+                    AND column_name = 'company_id'
+                """))
+                has_company_id = col_result.scalar() > 0
+
+            # If all 6 views exist and have company_id, skip creation
+            if existing_views == 6 and has_company_id:
+                logger.info("All materialized views already exist and are up to date")
                 return
 
             logger.info(f"Creating materialized views (found {existing_views}/6 views)...")

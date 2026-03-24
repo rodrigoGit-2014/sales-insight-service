@@ -23,7 +23,7 @@ class TicketRepository(BaseRepository[Ticket]):
         self._views_verified = False
 
     def _ensure_materialized_views(self):
-        """Create materialized views if they don't exist. Called once per repository instance."""
+        """Create materialized views if they don't exist or are outdated. Called once per repository instance."""
         if self._views_verified:
             return
         try:
@@ -36,10 +36,24 @@ class TicketRepository(BaseRepository[Ticket]):
                     'mv_product_analytics', 'mv_customer_top'
                 )
             """))
-            if result.scalar() == 6:
+            views_exist = result.scalar() == 6
+
+            # Check if views have company_id column (needed for multi-tenant filtering)
+            has_company_id = False
+            if views_exist:
+                col_result = self.db.execute(text("""
+                    SELECT COUNT(*) FROM information_schema.columns
+                    WHERE table_schema = 'public'
+                    AND table_name = 'mv_product_analytics'
+                    AND column_name = 'company_id'
+                """))
+                has_company_id = col_result.scalar() > 0
+
+            if views_exist and has_company_id:
                 self._views_verified = True
                 return
-            logger.warning("Missing materialized views detected, creating them...")
+
+            logger.warning("Materialized views missing or outdated, recreating them...")
             from app.db.session import create_materialized_views
             create_materialized_views()
             self._views_verified = True
