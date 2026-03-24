@@ -96,8 +96,9 @@ def _create_matview_trigger(engine):
 @app.on_event("startup")
 async def startup_event():
     """Execute on application startup"""
-    from app.db.session import create_tables, engine
+    from app.db.session import create_tables, create_materialized_views, engine
     create_tables()
+    create_materialized_views()
     try:
         _create_matview_trigger(engine)
     except Exception as e:

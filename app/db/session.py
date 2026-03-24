@@ -80,15 +80,7 @@ def create_materialized_views():
                 logger.info("All materialized views already exist")
                 return
 
-            # Check if tickets table has any data
-            result = conn.execute(text("SELECT COUNT(*) FROM tickets"))
-            ticket_count = result.scalar()
-
-            if ticket_count == 0:
-                logger.info("No data in tickets table, skipping materialized view creation")
-                return
-
-            logger.info(f"Creating materialized views (found {existing_views}/6 views, {ticket_count} tickets)...")
+            logger.info(f"Creating materialized views (found {existing_views}/6 views)...")
 
             # Read and execute the SQL file
             sql_file = Path(__file__).parent.parent.parent / "docker" / "postgres" / "create_materialized_views.sql"

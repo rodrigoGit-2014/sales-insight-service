@@ -4,10 +4,14 @@ from typing import List, Optional, Dict, Any
 from datetime import date
 from decimal import Decimal
 from sqlalchemy import func, desc, and_, text
+from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.orm import Session
+import logging
 
 from app.models.ticket import Ticket
 from app.repositories.base import BaseRepository
+
+logger = logging.getLogger(__name__)
 
 
 class TicketRepository(BaseRepository[Ticket]):
@@ -15,6 +19,31 @@ class TicketRepository(BaseRepository[Ticket]):
 
     def __init__(self, db: Session):
         super().__init__(Ticket, db)
+        self._views_verified = False
+
+    def _ensure_materialized_views(self):
+        """Create materialized views if they don't exist. Called once per repository instance."""
+        if self._views_verified:
+            return
+        try:
+            result = self.db.execute(text("""
+                SELECT COUNT(*) FROM pg_matviews
+                WHERE schemaname = 'public'
+                AND matviewname IN (
+                    'mv_daily_sales', 'mv_monthly_trend',
+                    'mv_department_analytics', 'mv_section_analytics',
+                    'mv_product_analytics', 'mv_customer_top'
+                )
+            """))
+            if result.scalar() == 6:
+                self._views_verified = True
+                return
+            logger.warning("Missing materialized views detected, creating them...")
+            from app.db.session import create_materialized_views
+            create_materialized_views()
+            self._views_verified = True
+        except Exception as e:
+            logger.error(f"Failed to ensure materialized views: {e}")
 
     def get_total_sales(
         self,
@@ -31,6 +60,7 @@ class TicketRepository(BaseRepository[Ticket]):
         Returns:
             Dictionary with total_sales, total_orders, total_clients, average_order_value
         """
+        self._ensure_materialized_views()
         params = {}
         where_clauses = []
 
@@ -81,6 +111,7 @@ class TicketRepository(BaseRepository[Ticket]):
         Returns:
             List of dictionaries with year, month, total_sales, order_count, avg_order_value
         """
+        self._ensure_materialized_views()
         where_sql, params = self._monthly_trend_filter(fecha_inicio, fecha_fin)
 
         results = self.db.execute(
@@ -124,6 +155,7 @@ class TicketRepository(BaseRepository[Ticket]):
         Returns:
             List of dictionaries with department data
         """
+        self._ensure_materialized_views()
         params = {}
         where_clauses = []
 
@@ -185,6 +217,7 @@ class TicketRepository(BaseRepository[Ticket]):
         Returns:
             List of dictionaries with section data
         """
+        self._ensure_materialized_views()
         params = {}
         where_clauses = []
 
@@ -249,6 +282,7 @@ class TicketRepository(BaseRepository[Ticket]):
         Returns:
             List of dictionaries with product data
         """
+        self._ensure_materialized_views()
         params = {"limit": limit}
         where_clauses = []
 
@@ -307,6 +341,7 @@ class TicketRepository(BaseRepository[Ticket]):
         Returns:
             List of dictionaries with product data
         """
+        self._ensure_materialized_views()
         params = {"limit": limit}
         where_clauses = []
 
@@ -365,6 +400,7 @@ class TicketRepository(BaseRepository[Ticket]):
         Returns:
             List of dictionaries with customer data
         """
+        self._ensure_materialized_views()
         params = {"limit": limit}
         where_clauses = []
 
@@ -425,6 +461,7 @@ class TicketRepository(BaseRepository[Ticket]):
         Returns:
             Dictionary with average_spend_per_customer, total_customers, total_sales
         """
+        self._ensure_materialized_views()
         params = {}
         where_clauses = []
 
@@ -488,6 +525,7 @@ class TicketRepository(BaseRepository[Ticket]):
         Returns:
             Total order count
         """
+        self._ensure_materialized_views()
         where_sql, params = self._monthly_trend_filter(fecha_inicio, fecha_fin)
         result = self.db.execute(
             text(f"SELECT COALESCE(SUM(order_count), 0) AS total FROM mv_monthly_trend {where_sql}"),
@@ -511,6 +549,7 @@ class TicketRepository(BaseRepository[Ticket]):
         Returns:
             Average order value
         """
+        self._ensure_materialized_views()
         where_sql, params = self._monthly_trend_filter(fecha_inicio, fecha_fin)
         result = self.db.execute(
             text(f"""
