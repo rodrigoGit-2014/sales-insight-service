@@ -55,35 +55,56 @@ def create_tables():
 
 def _run_migrations():
     """Add missing columns to existing tables (lightweight migration)."""
-    migrations = [
-        # Add company_id to tickets if it doesn't exist
-        {
-            "check": """
-                SELECT COUNT(*) FROM information_schema.columns
-                WHERE table_schema = 'public'
-                AND table_name = 'tickets'
-                AND column_name = 'company_id'
-            """,
-            "apply": """
-                ALTER TABLE tickets
-                ADD COLUMN company_id UUID;
-                CREATE INDEX IF NOT EXISTS ix_tickets_company_id ON tickets(company_id);
-            """,
-            "description": "Add company_id column to tickets table",
-        },
-    ]
+    from app.db.base import Base
+
     try:
         with engine.connect() as conn:
-            for migration in migrations:
-                result = conn.execute(text(migration["check"]))
-                if result.scalar() == 0:
-                    logger.info(f"Applying migration: {migration['description']}")
-                    for stmt in migration["apply"].strip().split(";"):
-                        stmt = stmt.strip()
-                        if stmt:
-                            conn.execute(text(stmt))
+            # Tables that need company_id added as a regular column
+            for table_name in ['tickets', 'jobs']:
+                result = conn.execute(text("""
+                    SELECT COUNT(*) FROM information_schema.columns
+                    WHERE table_schema = 'public'
+                    AND table_name = :table_name
+                    AND column_name = 'company_id'
+                """), {"table_name": table_name})
+
+                # Check if table exists first
+                table_exists = conn.execute(text("""
+                    SELECT COUNT(*) FROM information_schema.tables
+                    WHERE table_schema = 'public' AND table_name = :table_name
+                """), {"table_name": table_name}).scalar() > 0
+
+                if table_exists and result.scalar() == 0:
+                    logger.info(f"Adding company_id column to {table_name}")
+                    conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN company_id UUID"))
+                    conn.execute(text(
+                        f"CREATE INDEX IF NOT EXISTS ix_{table_name}_company_id ON {table_name}(company_id)"
+                    ))
                     conn.commit()
-                    logger.info(f"Migration applied: {migration['description']}")
+                    logger.info(f"Added company_id to {table_name}")
+
+            # Tables where company_id is part of the primary key (need full recreate)
+            for table_name in ['secciones', 'departamentos']:
+                result = conn.execute(text("""
+                    SELECT COUNT(*) FROM information_schema.columns
+                    WHERE table_schema = 'public'
+                    AND table_name = :table_name
+                    AND column_name = 'company_id'
+                """), {"table_name": table_name})
+
+                table_exists = conn.execute(text("""
+                    SELECT COUNT(*) FROM information_schema.tables
+                    WHERE table_schema = 'public' AND table_name = :table_name
+                """), {"table_name": table_name}).scalar() > 0
+
+                if table_exists and result.scalar() == 0:
+                    logger.info(f"Recreating {table_name} with company_id in primary key")
+                    conn.execute(text(f"DROP TABLE IF EXISTS {table_name} CASCADE"))
+                    conn.commit()
+                    # create_all will recreate it with the correct schema
+                    Base.metadata.tables[table_name].create(bind=engine)
+                    logger.info(f"Recreated {table_name}")
+
     except Exception as e:
         logger.error(f"Failed to run migrations: {e}")
 
