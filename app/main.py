@@ -93,6 +93,27 @@ def _create_matview_trigger(engine):
     logger.info("Materialized view trigger created on tickets table")
 
 
+def _refresh_matviews_on_startup(engine):
+    """Refresh materialized views so they reflect existing data after DB reset or restart."""
+    from sqlalchemy import text
+
+    views = [
+        "mv_daily_sales", "mv_monthly_trend", "mv_department_analytics",
+        "mv_section_analytics", "mv_product_analytics", "mv_customer_top",
+    ]
+    try:
+        with engine.connect() as conn:
+            for view in views:
+                try:
+                    conn.execute(text(f"REFRESH MATERIALIZED VIEW {view}"))
+                except Exception:
+                    pass
+            conn.commit()
+        logger.info("Materialized views refreshed on startup")
+    except Exception as e:
+        logger.warning(f"Could not refresh materialized views on startup: {e}")
+
+
 @app.on_event("startup")
 async def startup_event():
     """Execute on application startup"""
@@ -103,6 +124,7 @@ async def startup_event():
         _create_matview_trigger(engine)
     except Exception as e:
         logger.warning(f"Could not create matview trigger: {e}")
+    _refresh_matviews_on_startup(engine)
     logger.info(
         f"Starting {settings.APP_NAME} v{settings.APP_VERSION}",
         extra={
