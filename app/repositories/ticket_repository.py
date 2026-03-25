@@ -521,9 +521,9 @@ class TicketRepository(BaseRepository[Ticket]):
 
         result = self.db.execute(
             text(f"""
-                SELECT COALESCE(SUM(client_count), 0) AS total_customers,
-                       COALESCE(SUM(total_sales), 0) AS total_sales
-                FROM mv_daily_sales
+                SELECT COUNT(DISTINCT id_cliente) AS total_customers,
+                       COALESCE(SUM(precio_total), 0) AS total_sales
+                FROM tickets
                 {where_sql}
             """),
             params
